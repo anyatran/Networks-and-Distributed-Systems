@@ -1,40 +1,65 @@
 import socket
 import sys
-import parser
 
-# Create a TCP/IP socket
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-# Connect the socket to the port where the server is listening
+# Server address to connect to
 server_address = ('login.ccs.neu.edu', 27993)
-print >>sys.stderr, 'connecting to %s port %s' % server_address
-sock.connect(server_address)
+secret_key = '9e2677f4533cad7f9bafea36b10789e';
 
 try:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect(server_address)
+    print 'connecting to %s port %s' % server_address
+
+    try:
    
-    # Send data
-    message = 'cs3700fall2015 HELLO 001910132\n'
-    print >>sys.stderr, 'sending "%s"' % message
-    sock.sendall(message)
+        # Sending first type of message
+        message = 'cs3700fall2015 HELLO 001910132\n'
+        print message 
+        sock.sendall(message)
 
-    # Look for the response
-    amount_received = 0
-    amount_expected = len(message)
-    
-    while amount_received < amount_expected:
+        # Receive first STATUS message
         data = sock.recv(50)
-        amount_received += len(data)
-        print >>sys.stderr, 'received "%s"' % data
-        while "STATUS" in data:
-        	solution = eval(data.split("STATUS ", 1)[1])
-        	solution_message = 'cs3700fall2015 %d' % solution + '\n' #'cs3700fall2015 52' + str(solution) + '\n'
-        	print >>sys.stderr, 'sending solution "%s"' % solution_message
-        	data = sock.sendall(solution_message)
-        	print >>sys.stderr, 'equation %s' % solution
-        	print >>sys.stderr, 'new data %s' % data
+        print data
 
-        print >>sys.stderr, 'Did not get status message "%s"' % data
+        while "cs3700fall2015 STATUS" in data:
+            # Get mathematical expression, for example: 3 + 4
+            expression = data.split("STATUS ", 1)[1]
+            # Evaluate mathematical expression
+            solution = eval(expression)
+            # Check if this expression containes one of four allowed mathematical operations
+            if expression.split(" ")[1] == '+' or expression.split(" ")[1] == '-' or expression.split(" ")[1] == '/' or expression.split(" ")[1] == '*':
+                solution_message = 'cs3700fall2015 %d' % (solution) + '\n' 
+                print solution_message 
+                # Send solution
+                sock.sendall(solution_message)
+                # Receive new STATUS message
+                data = sock.recv(50)
+            else:
+                print 'Unknown mathematical expression: "%s"' % expression
+                break
 
-finally:
-    print >>sys.stderr, 'closing socket'
-    sock.close()
+        # If received data does not contain STATUS message anymore check if it is a BYE message
+        if "cs3700fall2015 BYE" in data:
+            print 'Received BYE message with secret key "%s"' % data.split("BYE ", 1)[1]
+        else:
+            print 'Received unknown type of message: "%s"' % data
+            print 'closing socket'
+            sock.close()
+
+    except:
+        print "ERROR occured"
+    finally:
+        print 'closing socket'
+        sock.close()
+
+except socket.error, (value, message):    
+    print "Could not open socket: " + message
+
+
+
+    #division by zero?
+
+
+
+
+    

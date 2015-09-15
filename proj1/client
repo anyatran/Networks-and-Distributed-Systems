@@ -2,9 +2,21 @@
 import socket, sys
 
 # Server address to connect to
-server_address = ('login.ccs.neu.edu', 27993)
-my_secret_key = '9e2677f4533cad7f9bafea36b10789e'
-husky_id = '001910132'
+# server_address = ('login.ccs.neu.edu', 27993)
+# yulia_secret_key = '9e2677f4533cad7f9bafea36b10789e'
+# anya_secret_key = '9503ad389fb5789ecfd482306029f49'
+# anya_husky_id = '001959524'
+
+# Get the parameters from users input
+def get_param():
+    user_input = sys.argv
+    if ('-p' in user_input) and user_input.index('-p') == 1 and len(user_input) == 5:
+        return [user_input[2], user_input[3], user_input[4]]
+    elif len(user_input) == 3:
+        return [27993, user_input[1], user_input[2]]
+    else:
+        print 'Wrong command format. The syntax is ./client <-p port> [hostname] [NEU ID]'
+        return []
 
 # Takes as parameter a mathematical expression
 # Valid format: [a number] [a math operator] [another number]
@@ -45,7 +57,7 @@ def calculate(d, sock):
                             data = None
                 elif data[15:18] == 'BYE':
                     if 'Unknown_Husky_ID' in data:
-                        print 'ERROR: Unknown Husky Id in "%s"' % data
+                        print 'ERROR: Unknown Husky Id: "%s"' % husky_id
                         data = None
                     else:
                         print data.split("BYE ", 1)[1]
@@ -61,26 +73,32 @@ def calculate(d, sock):
             data = None
 
 # Initializes a socket and starts calculation process
-def init(server_addr):
+def init():
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(server_addr)
-
-        try:      
-            # Sending first type of message
-            message = 'cs3700fall2015 HELLO ' + husky_id + '\n'
-            sock.sendall(message)
-            # Receive first STATUS message
-            data = sock.recv(50)
-            if len(data) > 0:
-                calculate(data, sock)
-            else:
-                print 'ERROR: No initial data was received "%s"' % data      
-        finally:
+        user_data = get_param()
+        if len(user_data) ==0:
             sock.close()
+        else:
+            port = user_data[0]
+            server = user_data[1]
+            husky_id = user_data[2]
+            sock.connect((server, int(port)))
+            try:      
+                # Sending first type of message
+                message = 'cs3700fall2015 HELLO ' + husky_id + '\n'
+                sock.sendall(message)
+                # Receive first STATUS message
+                data = sock.recv(50)
+                if len(data) > 0:
+                    calculate(data, sock)
+                else:
+                    print 'ERROR: No initial data was received "%s"' % data      
+            finally:
+                sock.close()
 
     except socket.error, (value, message):    
         print "ERROR: Could not open socket: " + message
 
-init(server_address)
+init()
     

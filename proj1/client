@@ -1,5 +1,5 @@
+#!/usr/bin/env python
 import socket
-import sys
 
 # Server address to connect to
 server_address = ('login.ccs.neu.edu', 27993)

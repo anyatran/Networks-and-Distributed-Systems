@@ -1,65 +1,86 @@
 #!/usr/bin/env python
-import socket
+import socket, sys
 
 # Server address to connect to
 server_address = ('login.ccs.neu.edu', 27993)
-secret_key = '9e2677f4533cad7f9bafea36b10789e';
+my_secret_key = '9e2677f4533cad7f9bafea36b10789e'
+husky_id = '001910132'
 
-try:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect(server_address)
-    print 'connecting to %s port %s' % server_address
+# Takes as parameter a mathematical expression
+# Valid format: [a number] [a math operator] [another number]
+# Numbers are in range [1, 1000]
+# Valid math operators: + - * /
+# Returns True if the given expression e is valid, and False otherwise
+def valid_expression(e):
+    valid = False
+    math_operator = e.split(" ")[1]
+    first = int(e.split(" ")[0])
+    second = int(e.split(" ")[2])
+    if (math_operator == '+' or math_operator == '-' or math_operator == '/' or math_operator == '*') and (first >= 1 and first <= 1000) and (second >= 1 and second <= 1000):
+        valid = True
+    return valid
 
-    try:
-   
-        # Sending first type of message
-        message = 'cs3700fall2015 HELLO 001910132\n'
-        print message 
-        sock.sendall(message)
-
-        # Receive first STATUS message
-        data = sock.recv(50)
-        print data
-
-        while "cs3700fall2015 STATUS" in data:
-            # Get mathematical expression, for example: 3 + 4
-            expression = data.split("STATUS ", 1)[1]
-            # Evaluate mathematical expression
-            solution = eval(expression)
-            # Check if this expression containes one of four allowed mathematical operations
-            if expression.split(" ")[1] == '+' or expression.split(" ")[1] == '-' or expression.split(" ")[1] == '/' or expression.split(" ")[1] == '*':
-                solution_message = 'cs3700fall2015 %d' % (solution) + '\n' 
-                print solution_message 
-                # Send solution
-                sock.sendall(solution_message)
-                # Receive new STATUS message
-                data = sock.recv(50)
+# Calculates mathematical expressions and send the solution to the server until 
+# gets BYE message
+def calculate(d, sock):
+    data = d
+    while data != None:
+        try: 
+            if data[:14] == 'cs3700fall2015':
+                if data[15:21] == 'STATUS':
+                    if len(data.split("STATUS ", 1)[1]) > 0:
+                        # Get mathematical expression, for example: 3 + 4
+                        expression = data.split("STATUS ", 1)[1]
+                        # Check if expression is valid
+                        if valid_expression(expression):
+                            # Evaluate mathematical expression
+                            solution = eval(expression)
+                            solution_message = 'cs3700fall2015 %d' % (solution) + '\n'
+                            # Send solution
+                            sock.sendall(solution_message)
+                            # Receive new STATUS message
+                            data = sock.recv(50)
+                        else:
+                            print 'ERROR: not valid mathematical expression "%s"' % expression
+                            data = None
+                elif data[15:18] == 'BYE':
+                    if 'Unknown_Husky_ID' in data:
+                        print 'ERROR: Unknown Husky Id in "%s"' % data
+                        data = None
+                    else:
+                        print data.split("BYE ", 1)[1]
+                        data = None
+                else:
+                    print 'ERROR: Received unknown or invalid type of message "%s"' % data
+                    data = None
             else:
-                print 'Unknown mathematical expression: "%s"' % expression
-                break
+                print 'ERROR: wrong class code "%s"' % data[:14]
+                data = None
+        except IndexError: 
+            print 'IndexError: was not able to get required characters from data: "%s"' % data
+            data = None
 
-        # If received data does not contain STATUS message anymore check if it is a BYE message
-        if "cs3700fall2015 BYE" in data:
-            print 'Received BYE message with secret key "%s"' % data.split("BYE ", 1)[1]
-        else:
-            print 'Received unknown type of message: "%s"' % data
-            print 'closing socket'
+# Initializes a socket and starts calculation process
+def init(server_addr):
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect(server_addr)
+
+        try:      
+            # Sending first type of message
+            message = 'cs3700fall2015 HELLO ' + husky_id + '\n'
+            sock.sendall(message)
+            # Receive first STATUS message
+            data = sock.recv(50)
+            if len(data) > 0:
+                calculate(data, sock)
+            else:
+                print 'ERROR: No initial data was received "%s"' % data      
+        finally:
             sock.close()
 
-    except:
-        print "ERROR occured"
-    finally:
-        print 'closing socket'
-        sock.close()
+    except socket.error, (value, message):    
+        print "ERROR: Could not open socket: " + message
 
-except socket.error, (value, message):    
-    print "Could not open socket: " + message
-
-
-
-    #division by zero?
-
-
-
-
+init(server_address)
     

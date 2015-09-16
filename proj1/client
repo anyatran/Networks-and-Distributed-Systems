@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import ssl, socket, sys
-
+# PROJECT 1
 # Server address to connect to
 # server_address = ('login.ccs.neu.edu', 27993)
 # yulia_secret_key = '9e2677f4533cad7f9bafea36b10789e'

@@ -1,0 +1,16 @@
+## Our high-level approach:
+## 		1. Initiate the protocol by creating a TCP socket connection to the server
+##		2. Send an initial message to the server
+## 		3. Receive a message from the server
+##		4. Validate received message
+## 		5. Evaluate mathematical expression and send the solution back to server
+##		6. Repeat steps 3-5 until you get BYE message
+##		7. Print a secret flag
+
+## Challenges we faced:
+##		1. Coming up with different error cases our client needs to handle
+##		2. Making sure our client handles different cases of errors/invalid messages/exceptions.
+
+## How we tested our code:
+##		We mocked messages that we send to the server and receive from the server, thus 
+##		we could test how our program reacts to different cases.

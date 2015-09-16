@@ -1,23 +1,43 @@
 #!/usr/bin/env python
-import socket, sys
-
+import ssl, socket, sys
+# PROJECT 1
 # Server address to connect to
 # server_address = ('login.ccs.neu.edu', 27993)
 # yulia_secret_key = '9e2677f4533cad7f9bafea36b10789e'
 # anya_secret_key = '9503ad389fb5789ecfd482306029f49'
 # anya_husky_id = '001959524'
+# yulia_husky_id = '001910132'
+# anya_ssl_secret_key = '69f4c29fde744112be2d01d41f7fa3233ea3023b589e580381ddf2e4d750d528'
+# yulia_ssl_secret_key = 'a9a5c8f48d1523c2b73078f9ea682c55b733411bee831c4a85cce4f6cbf33cd5'
+
+class Server(object):
+    def __init__(self, port, s, host, nuid):
+        self.port = port
+        self.s = s
+        self.host = host
+        self.nuid = nuid
 
 # Get the parameters from users input
 def get_param():
     user_input = sys.argv
-    if ('-p' in user_input) and user_input.index('-p') == 1 and len(user_input) == 5:
-        return [user_input[2], user_input[3], user_input[4]]
-    elif len(user_input) == 3:
-        return [27993, user_input[1], user_input[2]]
-    else:
-        print 'Wrong command format. The syntax is ./client <-p port> [hostname] [NEU ID]'
-        return []
-
+    # if port is not specified
+    if ('-p' not in user_input):
+        if ('-s' in user_input) and (user_input.index('-s') == 1) and len(user_input) == 4:
+            return Server(27994, True, user_input[2], user_input[3])
+        elif (len(user_input) == 3):
+            return Server(27993, False, user_input[1], user_input[2])
+        else:
+            print 'Wrong command format. The syntax is ./client <-p port> <-s> [hostname] [NEU ID]'
+            return 0
+    # if port is specified
+    elif ('-p' in user_input):
+        if ('-s' in user_input) and (len(user_input) == 6):
+            return Server(user_input[2], True, user_input[4], user_input[5])
+        elif ('-s' not in user_input) and (len(user_input) == 5):
+            return Server(user_input[2], False, user_input[3], user_input[4])
+        else:
+            print 'Wrong command format. The syntax is ./client <-p port> <-s> [hostname] [NEU ID]'
+            return 0
 # Takes as parameter a mathematical expression
 # Valid format: [a number] [a math operator] [another number]
 # Numbers are in range [1, 1000]
@@ -75,27 +95,30 @@ def calculate(d, sock):
 # Initializes a socket and starts calculation process
 def init():
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         user_data = get_param()
-        if len(user_data) ==0:
-            sock.close()
-        else:
-            port = user_data[0]
-            server = user_data[1]
-            husky_id = user_data[2]
-            sock.connect((server, int(port)))
+        if user_data != 0:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            used_sock = sock
+            if user_data.s:
+                used_sock = ssl.wrap_socket(sock, ssl_version=ssl.PROTOCOL_TLSv1)
+
+            port = user_data.port
+            server = user_data.host
+            husky_id = user_data.nuid
+            used_sock.connect((server, int(port)))
+            #sock.connect((server, int(port)))
             try:      
                 # Sending first type of message
                 message = 'cs3700fall2015 HELLO ' + husky_id + '\n'
-                sock.sendall(message)
+                used_sock.sendall(message)
                 # Receive first STATUS message
-                data = sock.recv(8192)
+                data = used_sock.recv(8192)
                 if len(data) > 0:
-                    calculate(data, sock)
+                    calculate(data, used_sock)
                 else:
                     print 'ERROR: No initial data was received "%s"' % data      
             finally:
-                sock.close()
+                used_sock.close()
 
     except socket.error, (value, message):    
         print "ERROR: Could not open socket: " + message

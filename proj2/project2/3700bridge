@@ -32,11 +32,11 @@ FUNCTIONALITY:
 '''
 class Bridge(object):
 
-    def __init__(self, b_id, lans, start, stop):
+    def __init__(self, b_id, lans):
         self.b_id = b_id
         self.lans = lans
-        self.start = start
-        self.stop = stop
+        self.start = 0 
+        self.stop = 0
         self.forwarding_table = {}
 
 # pads the name with null bytes at the end
@@ -47,17 +47,18 @@ def pad(name):
     return result
  
 if __name__ == "__main__":
-    id = sys.argv[1]
-    LAN = sys.argv[2:]
+    bridge = Bridge(sys.argv[1], sys.argv[2:])
     sockets = []    
+    print("ID: " + bridge.b_id)
+    print (bridge.lans)
     # creates sockets and connects to them
-    for x in range(len(LAN)):
+    for x in range(len(bridge.lans)):
         s = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
-        s.connect(pad(LAN[x]))
+        s.connect(pad(bridge.lans[x]))
         sockets.append(s)
         
         
-    print "Bridge " + id + " starting up\n"
+    print "Bridge " + bridge.b_id + " starting up\n"
 
     # Main loop
     while True:

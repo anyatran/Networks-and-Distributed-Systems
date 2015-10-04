@@ -1,10 +1,12 @@
 #!/usr/bin/python -u    
+# -*- coding: utf-8 -*-
 # The -u makes output unbuffered, so it will show up immediately
 import json
 import sys
 import socket
 import select
 import struct
+import time
 # forwarding table is a dictionary of <IP: Port> 
 '''
 Forwarding Table is a dictionary of <IP, Port>
@@ -37,17 +39,84 @@ class Bridge(object):
     def __init__(self, b_id, lans):
         self.b_id = b_id
         self.lans = lans
+        self.notactiveports = []
         self.start = 0 
         self.stop = 0
         self.forwarding_table = {}
-        self.bpdu = []
-        self.root = b_id
-        self.port = 0
-    def print_ft(self):
-        res = ''
-        for addr, p in self.forwarding_table.iteritems():
-            res += '->> id: ' + addr + ' port: ' + p
-        print res
+        self.bpdus = {}
+        self.root = -1
+
+    def sendBPDU(self, s, port):
+        self.root = self.b_id
+        message = {"source":self.b_id, "dest":"ffff", "type": "bpdu", "message":{"id":"92b4", "root":self.root, "cost":0, "port":port}}
+        s.send(json.dumps(message))
+        print "BPDU message sent: %s" % json.dumps(message)
+
+
+
+    def start(self):
+        sockets = []    
+
+        # creates sockets and connects to them
+        for x in range(len(self.lans)):
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+            s.connect(pad(self.lans[x]))
+            sockets.append(s)
+        print "Bridge " + self.b_id + " starting up\n"
+
+        last_sent = time.time()
+
+        while True:
+
+            ready, ignore, ignore2 = select.select(sockets, [], [], 1)
+
+            port = 1;
+            # Reads from each fo the ready sockets
+            for x in ready:
+
+                self.sendBPDU(x, port)
+
+                if ((time.time() - last_seen) >= 0.5):
+                    self.sendBPDU(x, port)
+                    last_sent = time.time()
+
+                data = x.recv(1500)
+                print "Data received: %s" % data
+                data_json = json.loads(data)
+
+                if (data_json['type'] == 'bpdu'):
+                    self.createSTP(data_json)
+
+                elif (data_json['type'] == 'data'):
+                    self.processData(data_json)
+
+                else:
+                    print "ERROR: unknown data type"
+
+                port = port + 1
+
+                #checkForTimedoutBPDUs
+
+                #send BPDU every 500 ms + update BPDU table {"port": {"src": "", "last_seen": ""}}
+
+
+            # data = x.recv(1500)
+            # print(data)
+
+            #     if data is bpdu data: do checks, update bpdu_table
+            #     if data is data: broadcast or forward, update forwarding_table
+
+
+
+            
+
+
+
+    # def print_ft(self):
+    #     res = ''
+    #     for addr, p in self.forwarding_table.iteritems():
+    #         res += '->> id: ' + addr + ' port: ' + p
+    #     print res
 
 # pads the name with null bytes at the end
 def pad(name):
@@ -56,13 +125,20 @@ def pad(name):
         result += '\0'
     return result
 
-def add_bpdu(bridge, msg, port):
-    src = msg['source']
-    if bridge.forwarding_table.get(src) == None:
-        bridge.forwarding_table[src] = port
+# def add_bpdu(bridge, msg, port):
+#     src = msg['source']
+#     if bridge.forwarding_table.get(src) == None:
+#         bridge.forwarding_table[src] = port
 
 if __name__ == "__main__":
     bridge = Bridge(sys.argv[1], sys.argv[2:])
+
+    bridge.start()
+
+
+
+
+
 
     #listsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)      #
     #listsocket.listen(10)                                               #
@@ -78,23 +154,36 @@ if __name__ == "__main__":
         s = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
         s.connect(pad(bridge.lans[x]))
         sockets.append(s)
-        msg = {"source":bridge.b_id, "dest":"ffff", "type": "bpdu",
-      "message":{"id":"92b4", "root":bridge.root, "cost":3, "port":bridge.port}}
-        
-        s.send(json.dumps(msg))
-        print 'Bridge %s is sending a message' % bridge.b_id
-        bridge.bpdu.append(msg)
     print "Bridge " + bridge.b_id + " starting up\n"
-
+    
     # Main loop
     while True:
 
-        port = 0
+        send bpdu message to each port every 500ms
+
+
+        if bpdu message received:
+            if src in bpdutable:
+                update last_seen time for this bpdu
+            else if not there:
+                add to table and self destroy in 750 ms
+            checkForRoot()
+            updateBpduTable()
+
+        BPDU table: source, port, last_seen
+
+
+
+
+
+
+        last_time = time.time()
         for s in sockets:
-            message = {"source":bridge.b_id, "dest":"ffff", "type": "bpdu", "message":{"id":"92b4", "root":bridge.b_id, "cost":0, "port":port}};
-            bridge.bpdu_table.append(message)
-            s.send(message)
-            port++
+            if ((last_time - time.time()) < 500) :
+                msg = {"source":bridge.b_id, "dest":"ffff", "type": "bpdu", "message":{"id":"92b4", "root":bridge.root, "cost":0, "port":bridge.port}}
+                s.send(json.dumps(msg))
+                print 'Bridge %s is sending a message' % bridge.b_id
+                bridge.bpdu.append(msg)
 
         # Calls select with all the sockets; change the timeout value (1)
         ready, ignore, ignore2 = select.select(sockets, [], [], 1)

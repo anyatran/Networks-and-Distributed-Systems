@@ -1,1 +1,116 @@
-#!/usr/bin/python
+#!/usr/bin/python -u    
+# The -u makes output unbuffered, so it will show up immediately
+import sys
+import socket
+import select
+# forwarding table is a dictionary of <IP: Port> 
+'''
+Forwarding Table is a dictionary of <IP, Port>
+FUNCTIONALITY:
+1) add entries
+2) delete entries
+3) flush the tale of any bridges port changes state (designated, root...)
+4) timeout forwarding table entries 5 sec after receiving the last msg
+   from that address
+5) print 'forwarding', 'broadcasting' or 'not forwarding' when the bridge made 
+   a decision
+'''
+
+'''
+Bridge:
+FUNCTIONALITY:
+1) for a spanning tree
+2) handle failures
+3) intruduce new bridges
+4) learn location of end host
+5) deliver and host packets to the destination
+6) handle mobility between end-hosts getween LANs
+7) bridge broadcast BPDU on all ports and dont broadcast more freq 
+   than once/500s 
+8) constantly listen to new roots and should know about
+   which ports are active and inactive upon receiving each BPDU
+'''
+class Bridge(object):
+
+    def __init__(self, b_id, lans):
+        self.b_id = b_id
+        self.lans = lans
+        self.start = 0 
+        self.stop = 0
+        self.forwarding_table = {}
+        self.bpdu_table = []
+
+# pads the name with null bytes at the end
+def pad(name):
+    result = '\0' + name
+    while len(result) < 108:
+        result += '\0'
+    return result
+ 
+if __name__ == "__main__":
+    bridge = Bridge(sys.argv[1], sys.argv[2:])
+
+    #listsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)      #
+    #listsocket.listen(10)                                               #
+
+    #listsocket.sendto(data, ('<broadcast>', PORT))                      # port?
+    sockets = []    
+
+    #sockets.append(listsocket)                                          #
+    # creates sockets and connects to them
+	
+	port = 0
+    for x in range(len(bridge.lans)):
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        s.connect(pad(bridge.lans[x]))
+        sockets.append(s)
+        message = {"source":bridge.b_id, "dest":"ffff", "type": "bpdu", "message":{"id":"92b4", "root":bridge.b_id, "cost":0, "port":port}};
+        bridge.bpdu_table[port] = message
+        s.send(json.dumps(message))
+        port = port + 1
+
+    for s in sockets:
+        data = s.recv(1500)
+        print >>sys.stderr, 'received "%s"' % data
+
+        dataJson = json.loads(data)
+        if (dataJson["type"] == "bpdu"):
+            something = dataJson["message"]["port"]
+            print "data came from port number: %d" % something
+            this_bpdu = bridge.bpdu_table[something]
+            print "for this bridge and port we have this bpdu entry:" + json.dumps(this_bpdu)
+            if (int(bridge.bpdu_table[something]["message"]["root"], 16) < int(dataJson["message"]["root"], 16)):
+                print "looks like root of this bridge is less than root of another!!! what do we do?"
+            elif (int(bridge.b_id, 16) == int(dataJson["source"], 16) and bridge.bpdu_table[something]["message"]["cost"] < dataJson["message"]["cost"]):
+                print "here2"
+            elif (int(bridge.b_id, 16) == int(dataJson["source"], 16) and bridge.bpdu_table[something]["message"]["cost"] == dataJson["message"]["cost"] and int(bridge.b_id, 16) == int(dataJson["source"], 16)):
+                print "here 3"
+            else:
+                print "here 4"
+                bridge.bpdu_table[something] = dataJson
+
+    print "Bridge " + bridge.b_id + " starting up\n"
+    print bridge.bpdu_table
+    # Main loop
+
+    while True:
+
+
+        # Calls select with all the sockets; change the timeout value (1)
+        ready, ignore, ignore2 = select.select(sockets, [], [], 0.750)
+
+        # Reads from each fo the ready sockets
+        for x in ready:
+            data = x.recv(1500)
+            print(data)
+
+
+
+
+
+
+
+
+
+
+

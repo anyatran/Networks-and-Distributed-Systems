@@ -38,6 +38,7 @@ class Bridge(object):
         self.start = 0 
         self.stop = 0
         self.forwarding_table = {}
+        self.bpdu_table = []
 
 # pads the name with null bytes at the end
 def pad(name):
@@ -48,9 +49,14 @@ def pad(name):
  
 if __name__ == "__main__":
     bridge = Bridge(sys.argv[1], sys.argv[2:])
+
+    #listsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)      #
+    #listsocket.listen(10)                                               #
+
+    #listsocket.sendto(data, ('<broadcast>', PORT))                      # port?
     sockets = []    
-    print("ID: " + bridge.b_id)
-    print (bridge.lans)
+
+    #sockets.append(listsocket)                                          #
     # creates sockets and connects to them
     for x in range(len(bridge.lans)):
         s = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
@@ -62,11 +68,21 @@ if __name__ == "__main__":
 
     # Main loop
     while True:
+
+        port = 0
+        for s in sockets:
+            message = {"source":bridge.b_id, "dest":"ffff", "type": "bpdu", "message":{"id":"92b4", "root":bridge.b_id, "cost":0, "port":port}};
+            bridge.bpdu_table.append(message)
+            s.send(message)
+            port++
+
         # Calls select with all the sockets; change the timeout value (1)
-        ready, ignore, ignore2 = select.select(sockets, [], [], 1)
+        ready, ignore, ignore2 = select.select(sockets, [], [], 0.750)
 
         # Reads from each fo the ready sockets
         for x in ready:
             data = x.recv(1500)
             print(data)
+            x.sendall(bpdu_table[0])
+
 

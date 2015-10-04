@@ -1,37 +1,12 @@
 #!/usr/bin/python -u    
+# -*- coding: utf-8 -*-
 # The -u makes output unbuffered, so it will show up immediately
 import json
 import sys
 import socket
+import threading
 import select
-import struct
-# forwarding table is a dictionary of <IP: Port> 
-'''
-Forwarding Table is a dictionary of <IP, Port>
-FUNCTIONALITY:
-1) add entries
-2) delete entries
-3) flush the tale of any bridges port changes state (designated, root...)
-4) timeout forwarding table entries 5 sec after receiving the last msg
-   from that address
-5) print 'forwarding', 'broadcasting' or 'not forwarding' when the bridge made 
-   a decision
-'''
-
-'''
-Bridge:
-FUNCTIONALITY:
-1) for a spanning tree
-2) handle failures
-3) intruduce new bridges
-4) learn location of end host
-5) deliver and host packets to the destination
-6) handle mobility between end-hosts getween LANs
-7) bridge broadcast BPDU on all ports and dont broadcast more freq 
-   than once/500s 
-8) constantly listen to new roots and should know about
-   which ports are active and inactive upon receiving each BPDU
-'''
+import time
 class Bridge(object):
 
     def __init__(self, b_id, lans):
@@ -40,14 +15,20 @@ class Bridge(object):
         self.start = 0 
         self.stop = 0
         self.forwarding_table = {}
-        self.bpdu = []
+        self.bpdu = {}
         self.root = b_id
         self.port = 0
     def print_ft(self):
         res = ''
-        for addr, p in self.forwarding_table.iteritems():
-            res += '->> id: ' + addr + ' port: ' + p
+        for addr, p in self.bpdu.iteritems():
+            res += '->> id: %s port: %s time: %.2f' % (addr, p['port'], p['last_seen'])
         print res
+
+    def timeout_bpdu(self):
+        for src, val in self.bpdu.iteritems():
+            if (time.time() - val['last_seen'] > 0.74):
+                self.bpdu.pop(src)
+
 # pads the name with null bytes at the end
 def pad(name):
     result = '\0' + name
@@ -57,39 +38,42 @@ def pad(name):
 
 def add_bpdu(bridge, msg, port):
     src = msg['source']
-    if bridge.forwarding_table.get(src) == None:
-        bridge.forwarding_table[src] = port
+    bridge.bpdu[src] = {"port": port, "last_seen": time.time()}
 
 if __name__ == "__main__":
     bridge = Bridge(sys.argv[1], sys.argv[2:])
     sockets = []    
-    print("ID: " + bridge.b_id)
     print 'LANS: ' 
     print (bridge.lans)
+    #ibridge.timeout_bpdu()
     # creates sockets and connects to them
     for x in range(len(bridge.lans)):
         s = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
         s.connect(pad(bridge.lans[x]))
         sockets.append(s)
-        msg = {"source":bridge.b_id, "dest":"ffff", "type": "bpdu",
-      "message":{"id":"92b4", "root":bridge.root, "cost":3, "port":bridge.port}}
-        
-        s.send(json.dumps(msg))
-        print 'Bridge %s is sending a message' % bridge.b_id
-        bridge.bpdu.append(msg)
+        last_time = time.time() + 0.75
+        while True:
+            if(time.time() < last_time):
+                msg = {"source":bridge.b_id, "dest":"ffff", "type": "bpdu", "message":{"id":"92b4", "root":bridge.root, "cost":0, "port":bridge.port}}
+                s.send(json.dumps(msg))
+                print 'Bridge %s is sending a BPDU' % bridge.b_id
+                time.sleep(0.5)
+            else:
+                break 
     print "Bridge " + bridge.b_id + " starting up\n"
 
     # Main loop
     while True:
         # Calls select with all the sockets; change the timeout value (1)
         ready, ignore, ignore2 = select.select(sockets, [], [], 1)
-        print 'RECEIVING AT : %s' % bridge.b_id 
         # Reads from each fo the ready sockets
+        bridge.timeout_bpdu() 
         for x in ready:
             data = x.recv(1500)
             data_json = json.loads(data)
+            print data
             if (data_json['type'] == 'bpdu'):
-                print 'BPDU!!!!!'
+                print 'RECEIVING BPDU AT %s and %s' % (bridge.b_id, data) 
                 port = x.getpeername()
                 print 'SOCKET PORT: %s' % port
                 add_bpdu(bridge, data_json, port)

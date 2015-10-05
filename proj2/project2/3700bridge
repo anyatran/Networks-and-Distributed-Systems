@@ -42,15 +42,47 @@ class Bridge(object):
         self.notactiveports = []
         self.start = 0 
         self.stop = 0
-        self.forwarding_table = {}
-        self.bpdus = {}
-        self.root = -1
+        self.forwarding_table = {}                              # {"<destination>": "<port>"}
+        self.bpdus = {}                                         #{<port_number>: [{"root": "2", "cost": 1, "timestamp": FFF}]
+        self.root = b_id
 
-    def sendBPDU(self, s, port):
+    def addToBPDUTable(self, port, root, cost):
+        self.bpdus[port] = {"root": root, "cost": cost, "timestamp": time.time()}
+
+    def sendBPDU(self, s, port, cost):
         self.root = self.b_id
-        message = {"source":self.b_id, "dest":"ffff", "type": "bpdu", "message":{"id":"92b4", "root":self.root, "cost":0, "port":port}}
+        message = {"source":self.b_id, "dest":"ffff", "type": "bpdu", "message":{"id":"92b4", "root":self.root, "cost":cost, "port":port}}
         s.send(json.dumps(message))
+        #self.addToBPDUTable(port)
         print "BPDU message sent: %s" % json.dumps(message)
+
+    def createSTP(self, port, newBPDU, s):
+        new_root = newBPDU["message"]["root"]
+        new_cost = newBPDU["message"]["cost"]
+        new_b_id = newBPDU["source"]
+        self.addToBPDUTable(port, newBPDU["message"]["root"], newBPDU["message"]["cost"])
+
+        if (int(self.root, 16) < int(new_root, 16)):
+            print "This Bridge root is less than new one"
+        elif ( (int(self.root, 16) == int(new_root, 16) )  and ( currentBPDU["cost"] < new_cost]) ):
+            print "This Bridge cost is less than new one"
+        elif ( (int(self.root, 16) == int(new_root, 16) )  and ( currentBPDU["cost"] == new_cost) and (int(seld.b_id, 16) < int(new_b_id, 16)) ):
+            print "This Bridge id is less than new one"
+        else:
+            self.root = new_root
+            self.sendBPDU(s, port, new_cost + 1)
+
+    def sendDataOnThisPort(self):
+        print "sendDataOnThisPort"
+
+    def processData(self, port, data, s):
+        destination = data["dest"]
+        if destination in self.forwarding_table:
+            s.sendDataOnThisPort()           # WHAT?
+        else:
+            s.broadcastData()                 # WHAT?
+            self.forwarding_table[destination] = port
+
 
 
 
@@ -74,49 +106,29 @@ class Bridge(object):
             # Reads from each fo the ready sockets
             for x in ready:
 
-                self.sendBPDU(x, port)
+                self.sendBPDU(x, port, 0)
 
                 if ((time.time() - last_seen) >= 0.5):
                     self.sendBPDU(x, port)
                     last_sent = time.time()
+
+                #checkForTimedoutBPDUs
 
                 data = x.recv(1500)
                 print "Data received: %s" % data
                 data_json = json.loads(data)
 
                 if (data_json['type'] == 'bpdu'):
-                    self.createSTP(data_json)
+                    self.createSTP(port, data_json, x) #which port?
 
                 elif (data_json['type'] == 'data'):
-                    self.processData(data_json)
+                    self.processData(port, data_json, s)
 
                 else:
                     print "ERROR: unknown data type"
 
                 port = port + 1
 
-                #checkForTimedoutBPDUs
-
-                #send BPDU every 500 ms + update BPDU table {"port": {"src": "", "last_seen": ""}}
-
-
-            # data = x.recv(1500)
-            # print(data)
-
-            #     if data is bpdu data: do checks, update bpdu_table
-            #     if data is data: broadcast or forward, update forwarding_table
-
-
-
-            
-
-
-
-    # def print_ft(self):
-    #     res = ''
-    #     for addr, p in self.forwarding_table.iteritems():
-    #         res += '->> id: ' + addr + ' port: ' + p
-    #     print res
 
 # pads the name with null bytes at the end
 def pad(name):
@@ -125,76 +137,9 @@ def pad(name):
         result += '\0'
     return result
 
-# def add_bpdu(bridge, msg, port):
-#     src = msg['source']
-#     if bridge.forwarding_table.get(src) == None:
-#         bridge.forwarding_table[src] = port
-
 if __name__ == "__main__":
     bridge = Bridge(sys.argv[1], sys.argv[2:])
 
     bridge.start()
 
 
-
-
-
-
-    #listsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)      #
-    #listsocket.listen(10)                                               #
-
-    #listsocket.sendto(data, ('<broadcast>', PORT))                      # port?
-    sockets = []    
-    print("ID: " + bridge.b_id)
-    print 'LANS: ' 
-    print (bridge.lans)
-
-    # creates sockets and connects to them
-    for x in range(len(bridge.lans)):
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
-        s.connect(pad(bridge.lans[x]))
-        sockets.append(s)
-    print "Bridge " + bridge.b_id + " starting up\n"
-    
-    # Main loop
-    while True:
-
-        send bpdu message to each port every 500ms
-
-
-        if bpdu message received:
-            if src in bpdutable:
-                update last_seen time for this bpdu
-            else if not there:
-                add to table and self destroy in 750 ms
-            checkForRoot()
-            updateBpduTable()
-
-        BPDU table: source, port, last_seen
-
-
-
-
-
-
-        last_time = time.time()
-        for s in sockets:
-            if ((last_time - time.time()) < 500) :
-                msg = {"source":bridge.b_id, "dest":"ffff", "type": "bpdu", "message":{"id":"92b4", "root":bridge.root, "cost":0, "port":bridge.port}}
-                s.send(json.dumps(msg))
-                print 'Bridge %s is sending a message' % bridge.b_id
-                bridge.bpdu.append(msg)
-
-        # Calls select with all the sockets; change the timeout value (1)
-        ready, ignore, ignore2 = select.select(sockets, [], [], 1)
-        print 'RECEIVING AT : %s' % bridge.b_id 
-        # Reads from each fo the ready sockets
-        for x in ready:
-            data = x.recv(1500)
-            data_json = json.loads(data)
-            if (data_json['type'] == 'bpdu'):
-                print 'BPDU!!!!!'
-                port = x.getpeername()
-                print 'SOCKET PORT: %s' % port
-                add_bpdu(bridge, data_json, port)
-        bridge.print_ft()

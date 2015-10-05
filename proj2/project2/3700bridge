@@ -20,6 +20,7 @@ class Bridge(object):
         self.root = b_id
         self.cost = 0
 
+
     def add_bpdu(self, port, root, cost):
         self.bpdus[port] = {"root": root, "cost": cost, "timestamp": time.time()}
 
@@ -36,9 +37,9 @@ class Bridge(object):
 
         if (int(self.root, 16) < int(new_root, 16)):
             print "This Bridge root is less than new one"
-        elif ((int(self.root, 16) == int(new_root, 16))  and (currentBPDU["cost"] < new_cost)):
+        elif ((int(self.root, 16) == int(new_root, 16))  and (self.cost < new_cost)):
             print "This Bridge cost is less than new one"
-        elif ( (int(self.root, 16) == int(new_root, 16) )  and ( currentBPDU["cost"] == new_cost) and (int(seld.b_id, 16) < int(new_b_id, 16)) ):
+        elif ( (int(self.root, 16) == int(new_root, 16) )  and (self.cost == new_cost) and (int(self.b_id, 16) < int(new_b_id, 16)) ):
             print "This Bridge id is less than new one"
         else:
             self.root = new_root

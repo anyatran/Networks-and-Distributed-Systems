@@ -31,7 +31,7 @@ class Bridge(object):
         print "BPDU table: %s" % json.dumps(self.bpdus) 
 
     def send_bpdu(self, s):
-        message = {"source":self.b_id, "dest":"ffff", "type": "bpdu", "message":{"id":"92b4", "root":self.root["id"], "cost":self.root["cost"], "port": s}}
+        message = {"source":self.b_id, "dest":"ffff", "type": "bpdu", "message":{"id":"92b4", "root":self.root["id"], "cost":self.root["cost"], "port": s.getpeername()}}
         s.send(json.dumps(message))
         print "BPDU message sent: %s" % json.dumps(message)
     

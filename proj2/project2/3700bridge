@@ -110,6 +110,7 @@ class Bridge(object):
             for x in ready:
                 #checkForTimedoutBPDUs
                 data = x.recv(1500)
+                port = x.getpeername()
                 print "Data received: %s" % data
                 data_json = json.loads(data)
                 if (data_json['type'] == 'bpdu'):

@@ -13,7 +13,7 @@ class Bridge(object):
         self.b_id = b_id
         self.lans = lans
         self.notactive_ports = []
-        self.active_ports = []
+        self.active_ports = {}#{port: destination bridge}
         self.start = 0 
         self.stop = 0
         self.forwarding_table = {}                              # {"<destination>": "<port>"}
@@ -68,11 +68,12 @@ class Bridge(object):
             #Tell everyone that my root changed
             self.root["id"] = current_root
             self.root["cost"] = current_cost
-            self.root["root_port"] = current_root_port
-            self.active_ports.append(current_root_port)
-            self.connected_bridges.append(connected)
-            # let the socket from root active, aka designated port
-            # HOW TO LET THE DESIGNATED PORT ACTIVE?????        
+            print "New root: %s/%s" % (self.b_id, self.root["id"])
+            if (self.root != current_root_port):
+                self.root["root_port"] = current_root_port
+                print "Root port: %s/%s" (self.b_id, self.root["root_port"])
+            self.active_ports[current_root_port] = connected
+            # HOW TO LET THE DESIGNATED PORT ACTIVE????? THE OTHER SIDE DOESNT KNOW IT SHOULD KEEP IT ACTIVE OR NOT        
             return True
 
             ## HOW figure out port states

@@ -142,9 +142,9 @@ class Bridge(object):
 
             if (did_root_change or (int(round(time.time() * 1000)) - last_sent) >= 500):
                 for s in sockets:  
-                    print "Sending bpdu again: %d - %d" % (time.time(), last_sent)
+                    print "Sending bpdu again: %d - %d" % (int(round(time.time() * 1000), last_sent)
                     self.send_bpdu(s)
-                last_sent = time.time()
+                last_sent = int(round(time.time() * 1000))
 
 # pads the name with null bytes at the end
 def pad(name):

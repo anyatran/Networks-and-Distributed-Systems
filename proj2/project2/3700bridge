@@ -25,10 +25,9 @@ class Bridge(object):
         #   "2" : {"1": {"root": 3, "cost": 1, "timestamp": 4}
         # }}
 
-
-    def add_bpdu(self, socket, source, root, cost):
+    def add_bpdu(self, port, source, root, cost):
         # be fancy here
-        self.bpdus[socket] = {source: {"root": root, "cost": cost, "timestamp": time.time()} }                      # CHECK THIS
+        self.bpdus[port] = {source: {"root": root, "cost": cost, "timestamp": time.time()} }                      # CHECK THIS
 
     def send_bpdu(self, s):
         message = {"source":self.b_id, "dest":"ffff", "type": "bpdu", "message":{"id":"92b4", "root":self.root["id"], "cost":self.root["cost"], "port": s.getpeername()}}
@@ -41,12 +40,12 @@ class Bridge(object):
         current_root_port = self.root["root_port"]
 
         did_root_change = False
-        print "BPDU table: %s" % json.dumps(self.bpdus) 
+        #print "BPDU table: %s" % json.dumps(self.bpdus) 
         # CHOOSING A ROOT 
-        for socket, bpdus in self.bpdus:
+        for port, bpdus in self.bpdus:
             for source, bpdu in bpdus:
                 if ((int(round(time.time() * 1000)) - int(round(bpdu["timestamp"] * 1000))) >= 750):
-                    self.bpdu[socket].pop(source, None)             #### Delete only bpdu for this souce or the whole source entry?
+                    self.bpdu[port].pop(source, None)             #### Delete only bpdu for this souce or the whole source entry?
                    # break                                          #### DO WE need to break?                                                    
                 else:
                     if (int(current_root, 16) < int(bpdu["root"], 16)):
@@ -58,12 +57,12 @@ class Bridge(object):
                     else: 
                         current_root = bpdu["root"]
                         current_cost = bpdu["cost"] + 1
-                        current_root_port = socket
+                        current_root_port = port
               
         # If we found out that this bridge is the root, make all of his ports active
         if (int(self.root["id"],16) == current_root):
-            for socket, bpdus in self.bpdus:
-                self.active_ports.append(socket)                            # {"3": True, "5": False}
+            for port, bpdus in self.bpdus:
+                self.active_ports.append(port)                            # {"3": True, "5": False}
         # If this birdge is not a root, change this bridge's root, cose, and ports statuses
         elif (int(self.root["id"],16) != current_root):
             print "New root: %s/%s" % (current_root, current_cost)
@@ -77,18 +76,22 @@ class Bridge(object):
             # HOW TO LET THE DESIGNATED PORT ACTIVE????? THE OTHER SIDE DOESNT KNOW IT SHOULD KEEP IT ACTIVE OR NOT        
             did_root_change = True
 
+            # sources = {}
+            # for port, bpdus in self.bpdus:
+            #     for source, bpdu in bpdus:
+            #             portConnected = {port: bpdu}
+            #             sources[source] = sources[source].append(portConnected)   
 
-        ## KEEPING DESIGNATED PORTS
-        # {"1": {"4": {{"root": 3, "cost": 1, "timestamp": 4}},
-        #        {"5": {"root": 3, "cost": 3, "timestamp": 4}},
-        #   "2" : {"1": {"root": 3, "cost": 1, "timestamp": 4}
-        # }}
-        for socket, bpdus in self.bpdus:
-            for source, bpdu in bpdus:
-                if (bpdu["cost"] - 1 == self.root["cost"]): 
-                    # means it go through me and i should keep the port as designated port
-                    self.active_ports.append(socket)
-                    break #####CHECK FOR THIS ONE
+            #{"45ad": {{"1": "bpdu1"}, {"2"; "bpdu2"}}}
+            # lowest_cost_through_this_port = {"port": -1, "cost": -1}
+            # for source, ports in sources:
+            #     if len(ports) > 1:
+            #         for port, bpdu in ports:
+            #             if (bpdu["root"] != self.root["root_port"]):
+            #                 if ( (lowest_cost_through_this_port["cost"] == -1) or (bpdu["cost"] < lowest_cost_through_this_port["cost"]) ):
+            #                     lowest_cost_through_this_port["port"] = port
+            #                     lowest_cost_through_this_port["cost"] = bpdu["cost"]
+            #                     self.active_ports.append(port)
 
         return did_root_change
             ## HOW figure out port states
@@ -142,9 +145,9 @@ class Bridge(object):
 
             if (did_root_change or (int(round(time.time() * 1000)) - last_sent) >= 500):
                 for s in sockets:  
-                    print "Sending bpdu again: %d - %d" % (int(round(time.time() * 1000), last_sent)
+                    print "Sending bpdu again: %d - %d" % (int(round(time.time() * 1000)), last_sent)
                     self.send_bpdu(s)
-                last_sent = int(round(time.time() * 1000))
+                last_sent = int(round(time.time()) * 1000)
 
 # pads the name with null bytes at the end
 def pad(name):

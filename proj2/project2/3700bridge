@@ -31,7 +31,7 @@ class Bridge(object):
         self.bpdus[socket] = {source: {"root": root, "cost": cost, "timestamp": time.time()} }                      # CHECK THIS
 
     def send_bpdu(self, s):
-        message = {"source":self.b_id, "dest":"ffff", "type": "bpdu", "message":{"id":"92b4", "root":self.root["id"], "cost":self.root["cost"], "port": s.getpeername()}}
+        message = {"source":self.b_id, "dest":"ffff", "type": "bpdu", "message":{"id":"92b4", "root":self.root["id"], "cost":self.root["cost"], "port": s.getpeername().replace('\x00', '')}}
         s.send(json.dumps(message))
         print "BPDU message sent: %s" % json.dumps(message)
 
@@ -46,14 +46,14 @@ class Bridge(object):
         for socket, bpdus in self.bpdus.iteritems():
             for source, bpdu in bpdus.iteritems():
                 if ((int(round(time.time() * 1000)) - int(round(bpdu["timestamp"] * 1000))) >= 750):
-                    self.bpdu[socket].pop(source, None)             #### Delete only bpdu for this souce or the whole source entry?
+                    self.bpdus[socket].pop(source, None)             #### Delete only bpdu for this souce or the whole source entry?
                    # break                                          #### DO WE need to break?                                                    
                 else:
-                    if (int(current_root, 16) < int(bpdu["root"], 16)):
+                    if (current_root < bpdu["root"]):
                         print "This Bridge cost is less than new one"
-                    elif ((int(current_root, 16) == int(bpdu["root"], 16))  and (current_cost < bpdu["cost"])):
+                    elif ((current_root == bpdu["root"])  and (current_cost < bpdu["cost"])):
                         print "This Bridge cost is less than new one"
-                    elif ( (int(current_root, 16) == int(bpdu["root"], 16) )  and (current_cost == bpdu["cost"]) and (int(self.b_id, 16) < int(source, 16)) ):
+                    elif ((current_root == bpdu["root"]) and (current_cost == bpdu["cost"]) and (self.b_id < source, 16) ):
                         print "This Bridge id is less than new one"
                     else: 
                         current_root = bpdu["root"]
@@ -61,12 +61,13 @@ class Bridge(object):
                         current_root_port = socket
               
         # If we found out that this bridge is the root, make all of his ports active
-        if (int(self.root["id"],16) == current_root):
-            for socket, bpdus in self.bpdus:
+        if (self.root["id"] == current_root):
+            for socket, bpdus in self.bpdus.iteritems():
                 self.active_ports.append(socket)                            # {"3": True, "5": False}
         # If this birdge is not a root, change this bridge's root, cose, and ports statuses
-        elif (int(self.root["id"],16) != current_root):
+        elif (self.root["id"] != current_root):
             print "New root: %s/%s" % (current_root, current_cost)
+            print "old root %s, new root: %s" % (self.root["id"], current_root)
 
             self.root["id"] = current_root
             self.root["cost"] = current_cost
@@ -125,7 +126,7 @@ class Bridge(object):
             for x in ready:
                 #checkForTimedoutBPDUs
                 data = x.recv(1500)
-                port = x.getpeername()
+                port = x.getpeername().replace('\x00', '')
                 print "Data received: %s" % data
                 data_json = json.loads(data)
                 if (data_json['type'] == 'bpdu'):

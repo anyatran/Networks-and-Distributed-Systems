@@ -11,24 +11,15 @@ class Bridge(object):
 
     def __init__(self, b_id, lans):
         self.b_id = b_id
-        self.lans = lans
-        self.active_ports = map(self.parse_lan, self.lans)#{port: destination bridge}
+        self.lans = self.remove_duplicates(lans)
+        self.active_ports = map(self.parse_lan, self.lans)
         self.ports = {}
         self.start = 0
         self.stop = 0
-        self.forwarding_table = {}                              # {"<destination>": "<port>"}
-        self.bpdus = {}                                         #{<socket>: {"source" :{"root": "2", "cost": 1, "timestamp": FFF} } }
+        self.forwarding_table = {}                             
+        self.bpdus = {}                                         
         self.root = {"id": b_id, "root_port": -1, "cost": 0}
         self.connected_bridges = [] ####??????????
-        # {"1": {"4": {{"root": 3, "cost": 1, "timestamp": 4}},
-        #        {"5": {"root": 3, "cost": 3, "timestamp": 4}},
-        #   "2" : {"1": {"root": 3, "cost": 1, "timestamp": 4}
-        # }}
-
-
-    #def add_bpdu(self, socket, data_json):
-        # be fancy here
-        #self.bpdus[socket] = {data_json['source']: {"root": data_json['message']['root'], "cost": data_json['message']['cost'], "timestamp": time.time()} }
 
     def parse_lan(self, l):
         return l.replace('\x00', '')
@@ -36,7 +27,6 @@ class Bridge(object):
     def send_bpdu(self, s):
         message = {"source":self.b_id, "dest":"ffff", "type": "bpdu", "message":{"id":"92b4", "root":self.root["id"], "cost":self.root["cost"], "port": s.getpeername().replace('\x00', '')}}
         s.send(json.dumps(message))
-        #print "BPDU message sent: %s" % json.dumps(message)
 
     def remove_duplicates(self, l):
         s = []
@@ -49,84 +39,39 @@ class Bridge(object):
         current_root = self.root["id"]
         current_cost = self.root["cost"]
         current_root_port = self.root["root_port"]
-        new_bpdus = self.bpdus.copy()
         current_active_ports = []
-        replace_bpdus = False
         did_root_change = False
         print "===> bpdu table: %s" %  (json.dumps(self.bpdus))
-        # CHOOSING A ROOT 
         for socket, bpdus in self.bpdus.iteritems():
-            # CREATING A HARD COPY IN ORDER TO AVOID CHANGES BUT WHY IS THIS HAPPENING????????????
             bpdus_copy = bpdus.copy()
             for source, bpdu in bpdus_copy.iteritems():
-                if ((int(round(time.time() * 1000)) - int(round(bpdu["timestamp"] * 1000))) >= 750):
-                    #print "DELETE %s from %s ===> " %(json.dumps(new_bpdus[socket].pop(source, None)), json.dumps(bpdu))
-                    replace_bpdus = True
+                now = time.time()
+                if ((int(round(now * 1000)) - int(round(bpdu["timestamp"] * 1000))) >= 750):
+                    print "BPDU timedout for source %s at %d - %d " % (source, int(round(now * 1000)), int(round(bpdu["timestamp"] * 1000)))
+                    del(self.bpdus[socket][source])                                 # Should we delete this whole entry {<source> : <bpdu>}
                 else:
-                    #if (current_root < bpdu["root"]):
-                        #print "This Bridge root id %s is less than new one %s" %(self.root["id"], bpdu["root"])
-                    #elif ((current_root == bpdu["root"])  and (current_cost < bpdu["cost"])):
-                        #print "This Bridge cost %s is less than new one %s" %(self.root["cost"], bpdu["cost"])
-                    #elif ((current_root == bpdu["root"]) and (current_cost == bpdu["cost"]) and (self.b_id < source, 16) ):
-                        #print "This Bridge id is less than new one"
                     if ((current_root > bpdu["root"]) or ((current_root == bpdu["root"]) and (current_root_port > socket))) :
                         current_root = bpdu["root"]
                         current_cost = bpdu["cost"] + 1
                         current_root_port = socket
         # If this birdge is not a root, change this bridge's root, cose, and ports statuses
-        if (self.root["id"] != current_root):
-            print "OLD root: %s" % json.dumps(self.root)
-            #print "New root: %s/%s" % (current_root, current_cost)
-            #print "old root %s, new root: %s" % (self.root["id"], current_root)
+        if (self.root["id"] != current_root):                                        # Check if this logic is correct when you are chaning the root
             self.root["id"] = current_root
             self.root["cost"] = current_cost
-            self.forwarding_table = {}
-            current_active_ports = []
+            self.root["root_port"] = current_root_port
             print "New root: %s/%s\n" % (self.b_id, self.root["id"])
-
-            if (self.root["root_port"] != current_root_port):
-                #self.active_ports.remove(self.root["root_port"])
-                #self.forwarding_table = {}
-                self.root["root_port"] = current_root_port
-                print "Root port: %s/%s\n" % (self.b_id, self.root["root_port"])
+            print "Root port: %s/%s\n" % (self.b_id, self.root["root_port"])
             did_root_change = True
 
-        if replace_bpdus:
-            replace_bpdus = False
-            self.bpdus = new_bpdus
-
-       ## KEEPING DESIGNATED PORTS
-        # {"1": {"4": {{"root": 3, "cost": 1, "timestamp": 4}},
-        #        {"5": {"root": 3, "cost": 3, "timestamp": 4}},
-        #   "2" : {"1": {"root": 3, "cost": 1, "timestamp": 4}
-        # }}
         # IF IM A ROOT
-        if (self.b_id == self.root["id"]):
-            # IF I BECAME A ROOT
-            if (self.root["root_port"] != -1):
-                print "I'm here"
-                current_active_ports = map(self.parse_lan, self.lans)
-                self.root["root_port"] = -1
-            else:
-                current_active_ports = self.remove_duplicates(self.active_ports)
-                print "Designated ports: %s/%s" % (self.b_id, ','.join(current_active_ports))
-
-        # ONLY IF IM NOT A ROOT
-
-        #{"45ad": {{"1": "bpdu1"}, {"2"; "bpdu2"}}}
-           # lowest_cost_through_this_port = {"port": -1, "cost": -1}
-            # for source, ports in sources:
-            #     if len(ports) > 1:
-            #         for port, bpdu in ports:
-            #             if (bpdu["root"] != self.root["root_port"]):
-            #                 if ( (lowest_cost_through_this_port["cost"] == -1) or (bpdu["cost"] < lowest_cost_through_this_port["cost"]) ):
-            #                     lowest_cost_through_this_port["port"] = port
-            #                     lowest_cost_through_this_port["cost"] = bpdu["cost"]
-            #                     self.active_ports.append(port)
+        if (self.b_id == self.root["id"]):                                             # Check if this logic is correct when you are a root
+            current_active_ports = self.remove_duplicates(self.active_ports)
+            for p in current_active_ports:         
+                print "Designated port: %s/%s" % (self.b_id, p)
+        # IF I am not a root
         else:
             sources = {}
             for port, bpdus in self.bpdus.iteritems():
-                bpdus_copy = bpdus.copy()
                 for source, bpdu in bpdus.iteritems():
                     if (source in sources):
                         sources[source][port] = bpdu
@@ -135,47 +80,23 @@ class Bridge(object):
                         portConnected[port] = bpdu
                         sources[source] = portConnected
 
-            #lowest_cost_through_this_port = {"port": -1, "cost": -1}
-
+            # Added root port to active ports
             current_active_ports.append(self.root["root_port"])
 
-
-            #for socket, bpdus in self.bpdus.iteritems():
             print "BPDU: %s" % json.dumps(self.bpdus)
             print "SOURCES: %s" % json.dumps(sources)
+
             for source_id, ports in sources.iteritems():
-            #         for port, bpdu in ports:
-            #             if (bpdu["root"] != self.root["root_port"]):
-            #                 if ( (lowest_cost_through_this_port["cost"] == -1) or (bpdu["cost"] < lowest_cost_through_this_port["cost"]) ):
-            #                     lowest_cost_through_this_port["port"] = port
-            #                     lowest_cost_through_this_port["cost"] = bpdu["cost"]
-            #                     self.active_ports.append(port)
                 for port, bpdu in ports.iteritems():
+                    # if this root is not root port proceed (since we already added it earlier)
                     if (bpdu["root"] != self.root["root_port"]):
-                        #if (port not in current_active_ports)
                         if (len(ports) > 1):
-                            if (self.root["cost"] > bpdu["cost"]):
-                                print "Disabled port: %s/%s\n" % (self.b_id, port)
-                            elif ((self.root["cost"] < bpdu["cost"]) or ((self.root["cost"] == bpdu["cost"]) and (self.b_id < source_id))):
+                            if ((self.root["cost"] < bpdu["cost"]) or ((self.root["cost"] == bpdu["cost"]) and ((port < bpdu["port"]) or (self.b_id < source_id))) ):
                                 if (port not in current_active_ports):
                                     current_active_ports.append(port)
-                            # if ( (lowest_cost_through_this_port["cost"] == -1) or (bpdu["cost"] < lowest_cost_through_this_port["cost"]) ):
-                            #     print "HERE"
-                            #     lowest_cost_through_this_port["port"] = port
-                            #     lowest_cost_through_this_port["cost"] = bpdu["cost"]
+                            else:
+                                print "Disabled port: %s/%s\n" % (self.b_id, port)
 
-                            # if ( (bpdu["cost"] == lowest_cost_through_this_port["cost"]) and (source_id < self.b_id) ):
-                            #     if (port not in current_active_ports):
-                            #         current_active_ports.append(port)
-                        #if (bpdu["cost"] - 1 == self.root["cost"]):
-                            # means it go through me and i should keep the port as designated port
-                            # if socket not in current_active_ports:
-                            #     print "added"
-                            #     current_active_ports.append(socket)
-                            # elif (source < self.b_id):
-                            #     print "added 2"
-                            #     current_active_ports.append(socket)
-                            # break
             for p in self.ports:
                 if ((p not in self.bpdus) and (p not in current_active_ports) and (p != self.root["root_port"])):
                     #print "This port did not receive BPDU"
@@ -188,7 +109,6 @@ class Bridge(object):
         #print "%s rootport: %s, active port: %s" % (self.b_id, self.root["root_port"], ','.join(self.active_ports))
 
         return did_root_change
-            ## HOW figure out port states
 
     def add_to_forwarding_table(self, source, port):
         self.forwarding_table[source] = {"port": port, "timestamp": time.time()}
@@ -228,7 +148,7 @@ class Bridge(object):
             self.bpdus[socket][data_json['source']] = {"root": data_json['message']['root'], "cost": data_json['message']['cost'], "timestamp": time.time()}
         else:
             self.bpdus[socket] = {data_json['source']: {"root": data_json['message']['root'], "cost": data_json['message']['cost'], "timestamp": time.time()} }                      # CHECK THIS
-        self.create_stp()
+        #self.create_stp()
 
     def start_bridge(self):
         sockets = []
@@ -249,20 +169,19 @@ class Bridge(object):
             ready, ignore, ignore2 = select.select(sockets, [], [], 0.1)
             # Reads from each fo the ready sockets
             for x in ready:
-                #checkForTimedoutBPDUs
                 data = x.recv(1500)
                 port = x.getpeername().replace('\x00', '')
                 self.ports[port] = x
                 data_json = json.loads(data)
                 # If received packet is of type BPDU, add it to bpdu table
-                if (data_json['type'] == 'bpdu'):
+                if ((data_json['type'] == 'bpdu') and (data_json["source"] != self.b_id)):
                     bpdu_received = True
                     self.add_bpdu(port, data_json)
                 # If received packet is of type Data, process this data
                 elif (data_json['type'] == 'data'):
                     self.process_data(port, data_json)
-                else:
-                    print "ERROR: unknown data type"
+                # else:
+                #     print "ERROR: unknown data type"
             # WHENEVER YOU RECEIVE A NEW BPDU -> REBUILD THE TREE
             if (bpdu_received):
                 did_root_change = self.create_stp()

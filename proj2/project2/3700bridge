@@ -1,43 +1,191 @@
 #!/usr/bin/python -u    
+# -*- coding: utf-8 -*-
 # The -u makes output unbuffered, so it will show up immediately
+import json
 import sys
 import socket
 import select
-# forwarding table is a dictionary of <IP: Port> 
-'''
-Forwarding Table is a dictionary of <IP, Port>
-FUNCTIONALITY:
-1) add entries
-2) delete entries
-3) flush the tale of any bridges port changes state (designated, root...)
-4) timeout forwarding table entries 5 sec after receiving the last msg
-   from that address
-5) print 'forwarding', 'broadcasting' or 'not forwarding' when the bridge made 
-   a decision
-'''
-
-'''
-Bridge:
-FUNCTIONALITY:
-1) for a spanning tree
-2) handle failures
-3) intruduce new bridges
-4) learn location of end host
-5) deliver and host packets to the destination
-6) handle mobility between end-hosts getween LANs
-7) bridge broadcast BPDU on all ports and dont broadcast more freq 
-   than once/500s 
-8) constantly listen to new roots and should know about
-   which ports are active and inactive upon receiving each BPDU
-'''
+import struct
+import time
 class Bridge(object):
 
     def __init__(self, b_id, lans):
         self.b_id = b_id
-        self.lans = lans
-        self.start = 0 
-        self.stop = 0
-        self.forwarding_table = {}
+        self.lans = self.remove_duplicates(lans)
+        self.disabled_ports = set([])
+        self.ports = {}
+        self.forwarding_table = {}                             
+        self.bpdus = {}                                         
+        self.root = {"id": b_id, "root_port": -1, "cost": 0}
+
+    # Parse the lan to not include unnessesary characters
+    def parse_lan(self, l):
+        return l.replace('\x00', '')
+
+    # Send BPDU message to s - socket
+    def send_bpdu(self, s):
+        message = {"source":self.b_id, "dest":"ffff", "type": "bpdu", "message":{"id":"92b4", "root":self.root["id"], "cost":self.root["cost"], "port": s.getpeername().replace('\x00', '')}}
+        s.send(json.dumps(message))
+        
+    # Remove duplicates from list l
+    def remove_duplicates(self, l):
+        s = []
+        for i in l:
+            if i not in s:
+                s.append(i)
+        return s
+    # Create spanning tree
+    def create_stp(self): 
+        current_root = self.root["id"]
+        current_cost = self.root["cost"]
+        current_root_port = self.root["root_port"]
+        did_root_change = False
+        my_root_timedout = False
+        broke_loop = False
+        # For each BPDU in bpdu table check if the root has changed and update your root
+        for socket, bpdus in self.bpdus.iteritems():
+            bpdus_copy = bpdus.copy()
+            for source, bpdu in bpdus_copy.iteritems():
+                now_time = int(round(time.time() * 1000))
+                if ((now_time - (bpdu["timestamp"])) >= 750):
+                    # If my root timedout
+                    if (source == self.root["id"]):
+                        did_root_change = True 
+                        my_root_timedout = True
+                    broke_loop = True
+                    break
+                else:
+                    if (current_root < bpdu["root"]):
+                        0
+                    elif ((current_root == bpdu["root"]) and (current_cost < bpdu["cost"])):
+                        0
+                    elif ((current_root == bpdu["root"]) and (current_cost == bpdu["cost"]) and (self.b_id < source)):
+                        0
+                    elif ((current_root == bpdu["root"]) and (current_cost == bpdu["cost"]) and (current_root_port < socket)):
+                        0
+                    else:
+                        current_root = bpdu["root"]
+                        current_cost = bpdu["cost"]
+                        current_root_port = socket
+            if (broke_loop):
+                self.bpdus.clear()
+                break
+        # If this birdge is not a root, change this bridge's root, cose, and ports statuses
+        if (self.root["id"] != current_root): 
+            did_root_change = True  
+            self.root["id"] = current_root
+            self.root["cost"] = current_cost + 1
+            self.root["root_port"] = current_root_port
+            self.forwarding_table = {}
+            print "New root: %s/%s\n" % (self.b_id, self.root["id"])
+            print "Root port: %s/%s\n" % (self.b_id, self.root["root_port"])        
+        
+        # IF IM A ROOT
+        if (my_root_timedout or (self.b_id == self.root["id"])):
+            self.root["root_port"] = -1
+            self.root["id"] = self.b_id
+            self.root["cost"] = 0
+            self.disabled_ports = set([])
+            for p in self.ports:         
+                print "Designated port: %s/%s\n" % (self.b_id, p)
+        # IF I am not a root
+        else:
+            #For each port in bpdu table check if there are disabled ports and add them to the list of disabled ports
+            for port, bpdus in self.bpdus.iteritems():
+                for source, bpdu in bpdus.iteritems():
+                    if (port != self.root["root_port"]):
+                        if (self.root["id"] < bpdu["root"]):
+                            0
+                        elif ((self.root["id"] == bpdu["root"]) and (self.root["cost"] < bpdu["cost"])):
+                            0
+                        elif ((self.root["id"] == bpdu["root"]) and (self.root["cost"] == bpdu["cost"]) and (self.b_id < source)):
+                            0
+                        else:
+                            print "Disabled port %s\n" % port
+                            self.disabled_ports.add(port)
+
+        return did_root_change
+
+    # Process given data that came from this port
+    def process_data(self, port, data):
+        broadcast_message = False
+        if port not in self.disabled_ports:
+            self.forwarding_table[data["source"]] = {"port": port, "timestamp": time.time()}
+            print "Received message %s on port %s from %s to %s\n" % (data["message"]["id"], port, data["source"], data["dest"])
+            # If data is in forwarding table make a decision on how to forward it or not forward it at all
+            if (data["dest"] in self.forwarding_table):
+                # We should "timeout" forwarding table entries 5 seconds after receiving the last message from that address.
+                now_fw_time = time.time()
+                if ((now_fw_time - self.forwarding_table[data["dest"]]["timestamp"]) <= 5):
+                    port_to_dest = self.forwarding_table[data["dest"]]["port"]
+                    if ((port_to_dest not in self.disabled_ports) and (port_to_dest != port)):
+                        print "Forwarding message %s to port %s\n" % (data["message"]["id"], port_to_dest)
+                        (self.ports[port_to_dest]).send(json.dumps(data))
+                    else:
+                        print "Not forwarding message %s\n" % data["message"]["id"]
+                else:
+                    broadcast_message = True
+            # If data is not in forwarding table broadcast it   
+            else:
+                broadcast_message = True
+
+            if (broadcast_message):
+                for p in self.ports:
+                    print "came from port %s, checking port %s, disabled ports %s" % (port, p, self.disabled_ports)
+                    if ((p not in self.disabled_ports) and (p != port)):
+                        print "Broadcast message %s to all ports %s\n" % (data["message"]["id"], p)
+                        (self.ports[p]).send(json.dumps(data))
+
+    # Add this BPDU - data_json to the bpdu table
+    def add_bpdu(self, socket, data_json):
+        # if the socket exists
+        if socket in self.bpdus:
+            self.bpdus[socket][data_json['source']] = {"root": data_json['message']['root'], "cost": data_json['message']['cost'], "timestamp": int(round(time.time() * 1000))}
+        else:
+            self.bpdus[socket] = {data_json['source']: {"root": data_json['message']['root'], "cost": data_json['message']['cost'], "timestamp": int(round(time.time() * 1000))} }                      # CHECK THIS
+
+    # Start the bridge
+    def start_bridge(self):
+        sockets = []
+        last_sent = 0;
+        did_root_change = False
+        bpdu_received = False
+        # creates sockets and connects to them
+        for x in range(len(self.lans)):
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+            s.connect(pad(self.lans[x]))
+            port = s.getpeername().replace('\x00', '')
+            # An object to relate port numbers and socket objects
+            self.ports[port] = s
+            sockets.append(s)
+        print "Bridge " + self.b_id + " starting up\n"    
+        
+        while True:
+            ready, ignore, ignore2 = select.select(sockets, [], [], 0.1)
+            # Reads from each fo the ready sockets
+            for x in ready:
+                data = x.recv(1500)
+                port = x.getpeername().replace('\x00', '')
+                #self.ports[port] = x
+                data_json = json.loads(data)
+                # If received packet is of type BPDU, add it to bpdu table
+                if ((data_json['type'] == 'bpdu') and (data_json["source"] != self.b_id)):
+                    bpdu_received = True
+                    self.add_bpdu(port, data_json)
+                # If received packet is of type Data, process this data
+                elif (data_json['type'] == 'data'):
+                    self.process_data(port, data_json)
+                else:
+                    print "ERROR: unknown data type"
+            # WHENEVER YOU RECEIVE A NEW BPDU -> REBUILD THE TREE
+            if (bpdu_received):
+                did_root_change = self.create_stp()
+            # Broadcast BPDU message every 500ms or if the root has changed
+            now_time = int(round(time.time() * 1000))
+            if (did_root_change or (now_time - last_sent) >= 500):
+                for s in sockets:
+                    self.send_bpdu(s)
+                last_sent = int(round(time.time() * 1000))
 
 # pads the name with null bytes at the end
 def pad(name):
@@ -45,28 +193,7 @@ def pad(name):
     while len(result) < 108:
         result += '\0'
     return result
- 
+
 if __name__ == "__main__":
     bridge = Bridge(sys.argv[1], sys.argv[2:])
-    sockets = []    
-    print("ID: " + bridge.b_id)
-    print (bridge.lans)
-    # creates sockets and connects to them
-    for x in range(len(bridge.lans)):
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
-        s.connect(pad(bridge.lans[x]))
-        sockets.append(s)
-        
-        
-    print "Bridge " + bridge.b_id + " starting up\n"
-
-    # Main loop
-    while True:
-        # Calls select with all the sockets; change the timeout value (1)
-        ready, ignore, ignore2 = select.select(sockets, [], [], 1)
-
-        # Reads from each fo the ready sockets
-        for x in ready:
-            data = x.recv(1500)
-            print(data)
-
+    bridge.start_bridge()

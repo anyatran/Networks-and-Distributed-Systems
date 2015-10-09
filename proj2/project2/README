@@ -1,0 +1,68 @@
+Project 2 - Anh Tran and Yulia Zileeva
+
+1) High-level approach:
+	We implemented a bridge as a class that has the following structure:
+	self.b_id - id of the bridge
+	self.lans - a list of lans that this bridge is connected to with duplicated removed
+	self.disabled_ports - a set of disabled ports
+	self.ports - a dictionary of port numbers and socket objects associated with them { <port_number> : <socket> }
+	self.forwarding_table - a dictionary for forwarding table of the form {<source> : {"port": <port_number>, "timestamp: <time>"}}
+	self.bpdus - bpdu table - a dictionary of BPDUs recieved of the form  {<port>: {<source> : {"root": <root>, "cost": <cost>, "timestamp": <timestamp>}}}
+	self.root - a dictionary to represent the root for this bridge of th form {"id": <root_id>, "root_port": <root_port>, "cost": <cost_to_the_root>}
+				root_port is -1 if this bridge is the root
+
+	Functions that we defined:
+
+	Parses the lan l to not include unnessesary characters
+    parse_lan(self, l)
+
+    Sends BPDU message to socket s of the specific format
+    send_bpdu(self, s)
+
+    Removes duplicate elements from the list l
+    remove_duplicates(self, l)
+
+    Creates spanning tree acording to the instructions
+    create_stp(self)
+
+    Adds source and port to the forwarding table
+    add_to_forwarding_table(self, source, port)
+
+    Processes data that came from port. Makes a decision to whether it should forward it or nor, or broadcast it
+    process_data(self, port, data)
+
+    Adds BPDU message data_json that came from port socket to the bpdu table
+    add_bpdu(self, socket, data_json)
+
+    Starts the bridgs, connects sockets, receives data, and send BPDU
+    start_bridge(self)
+
+
+    Our process started with sending BPDU messages initially and then every 500ms or if the root has changed.
+    If one of the ports recieved BPDU message, we would add to the BPDU table, and turn "BPDU_received" flag to true in order to kick off the process of creating or modifying spanning tree.
+    If one of the ports received a Data message, we would process this data.
+
+    When creating spanning tree, we first checked if any of the bridges in our bpdu tables has changed their root and it's better that our current root.
+    If we became a root, we marked all of ports enabled, and none disabled.
+    If we are not a root, we had to make decisions on whether some of the ports are disabled.
+
+    To process Data message we had to make sure destination is in our forwarding table and the port to that desination is not disable, and then forward it, otherwise broadcast it to all enabled ports except the one Data message came from.
+
+
+2) Challenges:
+
+	Our code is getting stack on some of the config files while running ./test script, even though we were able to run it with ./run command and get good results. We are not sure what is the reason as we are confident that the spanning tree is correct.
+	
+	Not enough experience coding in Python. And I'm not talking about general idea/syntax of Python - we know that, I'm talking about small things only related to the language that a programmer would know only if he coded in language for quite a while. For example, some of the erros we were getting wasn't obviuos for us or Python would just silently proceed without telling us that there is an error. 
+
+	General concept was clear at first, but when we started digging into the details, we realized that there is many things we should be careful with and there are many corner cases that should be taken care of. 
+
+	Unavailablity to do this project in CS lab
+	Ssh into ccis machine wasn't always permitted
+
+
+3) Testing:
+    
+	For testing we used define config files and try to see what is the result. First thing we tried to get correct was getting BPDU messages and inserting them into the table. Next - trying to find the root and correct root ports/cost. Then, we made sure disabled ports are correct. And then we checking if forwarding table is right and deciosions on forwarding are made correctly. We also tried to play around with given config files and change them a little to see how our program will react.
+
+

@@ -36,7 +36,6 @@ class Bridge(object):
         return s
     # Create spanning tree
     def create_stp(self):
-        
         current_root = self.root["id"]
         current_cost = self.root["cost"]
         current_root_port = self.root["root_port"]
@@ -57,8 +56,6 @@ class Bridge(object):
                     elif ((current_root == bpdu["root"]) and (current_cost < bpdu["cost"])):
                         0
                         #print "Not changing root 2"
-                    # if ((current_root == bpdu["root"]) and (current_cost == bpdu["cost"]) and (current_root_port < socket)):
-                    #     print "Not changing root 2.3"
                     elif ((current_root == bpdu["root"]) and (current_cost == bpdu["cost"]) and (self.b_id < source)):
                         0
                         #print "Not changing root 3"
@@ -71,7 +68,7 @@ class Bridge(object):
                         current_cost = bpdu["cost"]
                         current_root_port = socket
         # If this birdge is not a root, change this bridge's root, cose, and ports statuses
-        if (self.root["id"] != current_root): 
+        if (self.root["id"] != self.root["id"]): 
             did_root_change = True  
             self.root["id"] = current_root
             self.root["cost"] = current_cost + 1
@@ -99,11 +96,12 @@ class Bridge(object):
                         elif ((self.root["id"] == bpdu["root"]) and (self.root["cost"] < bpdu["cost"])):
                             0
                             #print "Not changing 2 %s < %s" % (self.root["cost"], bpdu["cost"])
-                        #elif ((self.root["id"] == bpdu["root"]) and (self.root["cost"] == bpdu["cost"]) and (self.root["root_port"] < port)):
-                            #print "Not changing 3 %s < %s" % (self.root["root_port"], port)
                         elif ((self.root["id"] == bpdu["root"]) and (self.root["cost"] == bpdu["cost"]) and (self.b_id < source)):
                             0
                             #print "Not changing 4 %s < %s" % (self.b_id, source)
+                        # elif ((self.root["id"] == bpdu["root"]) and (self.root["cost"] == bpdu["cost"]) and (self.root["root_port"] < port)):
+                        #     0
+                        #     print "Not changing root root ports %s < %s" % (self.root["root_port"], port)
                         else:
                             print "Disabled port %s\n" % port
                             self.disabled_ports.add(port)

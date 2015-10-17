@@ -13,18 +13,47 @@ import json
 
 MSG_SIZE = 1500
 DATA_SIZE = 1000
+DATA = {}
 TIMEOUT = 30
 SEQUENCE = 0
+ACK = 0
+DUPS_ACK_COUNT = 0
+LAST_BYTE_SENT = 0
+LAST_ACK_RCV = 0
+C_WIN = 1
+ADV_WIN = 0
+STATE = 0 #0 = slow start, 1 = AI
+ALPHA = 0.875
+SSTHRESH = ADV_WIN
 
 # Bind to localhost and an ephemeral port
 IP_PORT = sys.argv[1]
 UDP_IP = IP_PORT[0:IP_PORT.find(":")]
 UDP_PORT = int(IP_PORT[IP_PORT.find(":")+1:])
 dest = (UDP_IP, UDP_PORT)
-
 # Set up the socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
 sock.settimeout(TIMEOUT)
+
+#calculates estimated timeout time based on RTTs
+#Inputs: SampleRTT, old estimatedRTT, alpha
+def estimate_timeout(timestamp, old_rtt):
+    sample_rtt = time.time() - timestamp #current_time - timestamp
+    estimated_rtt = (1 - ALPHA) * old_rtt * (0.875 * ALPHA)
+    return estimated_rtt
+
+#calculates congestion window
+#CALL THIS FN WHENEVER ACK IS RECEIVED
+def new_ack_rcv():
+    global C_WIN
+    if (C_WIN < SSTHRESH):
+        #slow start
+        C_WIN = CWIN + 1
+    #AI
+    else:
+        C_WIN = C_WIN + (1/C_WIN)
+
+#3 
 
 def log(string):
   sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
@@ -34,7 +63,7 @@ def send_next_packet():
 
   data = sys.stdin.read(DATA_SIZE)
   if (len(data) > 0):
-    msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False})
+    msg = json.dumps({"src": 1, "dest": 2, "sequence": SEQUENCE, "data": data, "ack": False, "eof": False})
     SEQUENCE += len(data)
 
     if sock.sendto(msg, dest) < len(msg):
@@ -71,5 +100,5 @@ while True:
     log("[error] timeout")
     sys.exit(-1)
 
-sock.sendto(json.dumps({"eof": True, "data": "", "sequence": SEQUENCE, "ack": False}), dest)
+sock.sendto(json.dumps({"src": 1, "dest": 2, "eof": True, "data": "", "sequence": SEQUENCE, "ack": False}), dest)
 sys.exit(0)

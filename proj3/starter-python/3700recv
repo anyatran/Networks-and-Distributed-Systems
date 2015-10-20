@@ -3,6 +3,9 @@
 # CS3700, Spring 2015
 # Project 2 Starter Code
 #
+# SACK: https://www.rfc-editor.org/rfc/rfc2018.txt
+#       http://packetlife.net/blog/2010/jun/17/tcp-selective-acknowledgments-sack/
+#       http://www.tcpipguide.com/free/t_TCPNonContiguousAcknowledgmentHandlingandSelective-4.htm
 
 import sys
 import socket
@@ -11,15 +14,16 @@ import datetime
 import select
 import json
 
-def log(string):
-  sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
-
 MSG_SIZE = 1500
 TIMEOUT = 30
 
 # Bind to localhost and an ephemeral port
 UDP_IP = "127.0.0.1"
 UDP_PORT = 0
+
+def log(string):
+  sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
+
 
 # Set up the socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 

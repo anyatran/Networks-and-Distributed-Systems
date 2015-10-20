@@ -3,6 +3,8 @@
 # CS3700, Spring 2015
 # Project 2 Starter Code
 #
+# NEW RENO: http://research.ijcaonline.org/volume40/number12/pxc3877351.pdf
+# SACK: http://packetlife.net/blog/2010/jun/17/tcp-selective-acknowledgments-sack/
 
 import sys
 import socket

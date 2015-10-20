@@ -17,6 +17,9 @@ import json
 MSG_SIZE = 1500
 TIMEOUT = 30
 
+SEQUENCE
+
+
 # Bind to localhost and an ephemeral port
 UDP_IP = "127.0.0.1"
 UDP_PORT = 0
@@ -33,6 +36,38 @@ sock.settimeout(TIMEOUT)
 # Get port we bound to
 UDP_PORT = sock.getsockname()[1]
 log("[bound] " + str(UDP_PORT))
+
+
+
+## Check if checksum is valid
+def checksum(packet):
+    try:
+        return str(binascii.crc32(packet['data']) & 0xffffffff) == packet['checksum']
+    except:
+        return False
+
+## Check if this data came in order
+def in_order(packet):
+  return True
+
+## Process this data
+def process_data(packet):
+  if (checksum(packet)):
+    if (in_order(packet)):
+      ##++++ store this sequnce here - we accepted this data packet
+      SEQUENCE  = packet['sequence'] + len(packet['data']
+      log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") ACCEPTED (in-order)")
+      sys.stdout.write(packet['data'])
+    elif:
+      ##++++ send ACK (last byte acked - sequence), SACK (this data sequence)
+      ##???? if we recieved package (#4), how do we know that we received package (#3) already and that we sacked it 
+      msg = json.dumps({"ack": SEQUENCE, "sack": decoded['sequence'] + len(decoded['data'])}, )
+      log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") ACCEPTED (out-order)")
+  else:
+    #####??????????? What to do if checksum is invalid
+    log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") IGNORED")
+    ## OR
+    log("[recv corrupt packet]")
 
 # Now listen for packets
 while True:
@@ -54,8 +89,7 @@ while True:
       if (decoded['data']):
         # If we receive data, we assume it's in-order
         # You will need to do much more here
-        log("[recv data] " + str(decoded['sequence']) + " (" + str(len(decoded['data'])) + ") ACCEPTED (in-order)")
-        sys.stdout.write(decoded['data'])
+        process_data(decoded);
 
       # Send back an ack to the sender
       msg = json.dumps({"ack": decoded['sequence'] + len(decoded['data'])})

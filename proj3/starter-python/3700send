@@ -103,39 +103,43 @@ def digest_data(data):
     return m.digest()
 
 def process_ack(packet):
-  SEQUENCE = packet["ack"]
-  ## if new ack received:
-    ## Update the running estimate of the RTO timer interval.
-    ## Update the congestion window size
-    ## Figure out next state
-  ## if dup ack
-    ## increment
-    ## if 3 dup ack -> fast retransmit and update congestion params
-  log("[recv ack] " + str(SEQUENCE))
+    SEQUENCE = packet["ack"]
+    ## if new ack received:
+      ## Update the running estimate of the RTO timer interval.
+      ## Update the congestion window size
+      ## Figure out next state
+    ## if dup ack
+      ## increment
+      ## if 3 dup ack -> fast retransmit and update congestion params
+    log("[recv ack] " + str(SEQUENCE))
 
 def send_next_packet():
-  global SEQUENCE
+    global SEQUENCE
 
-  data = sys.stdin.read(DATA_SIZE)
-  if (len(data) > 0):
-    ## binary encode
-    msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False, "digested": digest_data(data)})
-    SEQUENCE += len(data)
+    data = sys.stdin.read(DATA_SIZE)
+    if (len(data) > 0):
+      	## binary encode
+      	msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False, "digested": digest_data(data)})
+      	SEQUENCE += len(data)
 
-    if sock.sendto(msg, dest) < len(msg):
-      log("[error] unable to fully send packet")
+      	if sock.sendto(msg, dest) < len(msg):
+        	log("[error] unable to fully send packet")
+      	else:
+        	log("[send data] " + str(SEQUENCE) + " (" + str(len(data)) + ")")
+      	return True
     else:
-      log("[send data] " + str(SEQUENCE) + " (" + str(len(data)) + ")")
-    return True
-  else:
-    return False
+      	return False
+
+def send_packets():
+	msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False, "digested": digest_data(data)})
+
 
 # Send first packet
 #send_next_packet()
 
 def read_input():
     global TOTAL_DATA
-    TOTAL_DATA = sys.stdin.read()
+    TOTAL_DATA = sys.stdin.readlines()
     print(TOTAL_DATA)
 
 read_input()

@@ -103,7 +103,7 @@ def digest_data(data):
     return m.digest()
 
 def process_ack(packet):
-  SEQUENCE = packet["ack"]
+  #SEQUENCE = packet["ack"]
   ## if new ack received:
     ## Update the running estimate of the RTO timer interval.
     ## Update the congestion window size
@@ -140,28 +140,29 @@ def read_input():
 
 read_input()
 # Now read in data, send packets
-# while True:
-#   log("ABOUT TO SLEEP")
-#   result = sock.recvfrom(MSG_SIZE)
+ while True:
+   log("ABOUT TO SLEEP")
+   result = sock.recvfrom(MSG_SIZE)
 
-#   if result:
-#     (data, addr) = result
-#     try:
-#       decoded = json.loads(data)
+   if result:
+     (data, addr) = result
+     try:
+       decoded = json.loads(data)
 
-#       ## We process only ACKs and ignore anything else
-#       # If there is an ack, send next packet
-#       if decoded['ack'] == SEQUENCE:
-#         process_ack(decoded)
-        
-#         # Try to send next packet; break if no more data
-#         if (not send_next_packet()):
-#           break
-#     except (ValueError, KeyError, TypeError):
-#       log("[recv corrupt packet]")
-#   else:
-#     log("[error] timeout")
-#     sys.exit(-1)
+       ## We process only ACKs and ignore anything else
+       # If there is an ack, send next packet
+       if decoded['ack'] == SEQUENCE:
+         print "HERE"
+         process_ack(decoded)
+       
+         # Try to send next packet; break if no more data
+         if (not send_next_packet()):
+           break
+     except (ValueError, KeyError, TypeError):
+       log("[recv corrupt packet]")
+   else:
+     log("[error] timeout")
+     sys.exit(-1)
 
-#sock.sendto(json.dumps({"src": 1, "dest": 2, "eof": True, "data": "", "sequence": SEQUENCE, "ack": False}), dest)
+sock.sendto(json.dumps({"src": 1, "dest": 2, "eof": True, "data": "", "sequence": SEQUENCE, "ack": False}), dest)
 sys.exit(0)

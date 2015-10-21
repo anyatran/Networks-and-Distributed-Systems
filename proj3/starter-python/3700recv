@@ -39,7 +39,7 @@ UDP_PORT = sock.getsockname()[1]
 log("[bound] " + str(UDP_PORT))
 
 
-
+HASHLIB.MD5(DATA)
 ## Check if checksum is valid
 def checksum(packet):
     try:

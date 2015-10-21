@@ -73,7 +73,6 @@ def process_data(packet):
         log("[recv corrupt packet]")
 
 # Now listen for packets
-<<<<<<< HEAD
 while True:
     result = sock.recvfrom(MSG_SIZE)
 
@@ -108,39 +107,3 @@ while True:
     else:
         log("[error] timeout")
         sys.exit(-1)
-=======
-# while True:
-#   result = sock.recvfrom(MSG_SIZE)
-
-#   # If nothing is ready, we hit the timeout
-#   if result:
-#     (data, addr) = result
-
-#     try:
-#       decoded = json.loads(data)
-#       print decoded
-#       # If the EOF flag is set, exit
-#       if (decoded['eof']):
-#         log("[completed]")
-#         sys.exit(0)
-
-#       # If there is data, we accept it and print it out
-#       if (decoded['data']):
-#         # If we receive data, we assume it's in-order
-#         # You will need to do much more here
-#         # format: [recv data] <sequence> (data.length) ACCEPTED (in-order)
-#         process_data(decoded);
-#       # Send back an ack to the sender
-#       msg = json.dumps({"ack": decoded['sequence'] + len(decoded['data'])})
-#       # format: ABOUT TO SEND <current sequence> + <data.length>
-#       log("ABOUT TO SEND " + msg)
-#       if sock.sendto(msg, addr) < len(msg):
-#         log("[error] unable to fully send packet")
-
-#     except (ValueError, KeyError, TypeError) as e:
-#       log("[recv corrupt packet]")
-#       raise e
-#   else:
-#     log("[error] timeout")
-#     sys.exit(-1)
->>>>>>> 893ebf2791a750a5e79a7f4f038cc0a751cc491a

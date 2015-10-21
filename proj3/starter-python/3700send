@@ -139,8 +139,8 @@ def send_packets():
 
 def read_input():
     global TOTAL_DATA
-    TOTAL_DATA = sys.stdin.readlines()
-    print(TOTAL_DATA)
+    TOTAL_DATA = sys.stdin.read(1400)
+    log(TOTAL_DATA)
 
 read_input()
 # Now read in data, send packets

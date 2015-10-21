@@ -17,7 +17,7 @@ import json
 MSG_SIZE = 1500
 TIMEOUT = 30
 
-SEQUENCE
+SEQUENCE = 0
 
 
 # Bind to localhost and an ephemeral port
@@ -25,7 +25,7 @@ UDP_IP = "127.0.0.1"
 UDP_PORT = 0
 
 def log(string):
-  sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
+    sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
 
 
 # Set up the socket
@@ -39,69 +39,71 @@ UDP_PORT = sock.getsockname()[1]
 log("[bound] " + str(UDP_PORT))
 
 
-HASHLIB.MD5(DATA)
+#HASHLIB.MD5(DATA)
 ## Check if checksum is valid
 def checksum(packet):
+    return true
+    '''
     try:
         return str(binascii.crc32(packet['data']) & 0xffffffff) == packet['checksum']
     except:
         return False
-
+    '''
 ## Check if this data came in order
 def in_order(packet):
-  return True
+    return True
 
 ## Process this data
 def process_data(packet):
-  if (checksum(packet)):
-    if (in_order(packet)):
-      ##++++ store this sequnce here - we accepted this data packet
-      SEQUENCE  = packet['sequence'] + len(packet['data']
-      log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") ACCEPTED (in-order)")
-      sys.stdout.write(packet['data'])
-    elif:
-      ##++++ send ACK (last byte acked - sequence), SACK (this data sequence)
-      ##???? if we recieved package (#4), how do we know that we received package (#3) already and that we sacked it 
-      msg = json.dumps({"ack": SEQUENCE, "sack": decoded['sequence'] + len(decoded['data'])}, )
-      log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") ACCEPTED (out-order)")
-  else:
-    #####??????????? What to do if checksum is invalid
-    log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") IGNORED")
-    ## OR
-    log("[recv corrupt packet]")
+    if (checksum(packet)):
+        if (in_order(packet)):
+            ##++++ store this sequnce here - we accepted this data packet
+            SEQUENCE  = packet['sequence'] + len(packet['data'])
+            log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") ACCEPTED (in-order)")
+            sys.stdout.write(packet['data'])
+        else:
+            ##++++ send ACK (last byte acked - sequence), SACK (this data sequence)
+            ##???? if we recieved package (#4), how do we know that we received package (#3) already and that we sacked it 
+            msg = json.dumps({"ack": SEQUENCE, "sack": decoded['sequence'] + len(decoded['data'])}, )
+            log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") ACCEPTED (out-order)")
+    else:
+        #####??????????? What to do if checksum is invalid
+        log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") IGNORED")
+        ## OR
+        log("[recv corrupt packet]")
 
 # Now listen for packets
 while True:
-  result = sock.recvfrom(MSG_SIZE)
+    result = sock.recvfrom(MSG_SIZE)
 
-  # If nothing is ready, we hit the timeout
-  if result:
-    (data, addr) = result
+    # If nothing is ready, we hit the timeout
+    if result:
+        (data, addr) = result
 
-    try:
-      decoded = json.loads(data)
-      print decoded
-      # If the EOF flag is set, exit
-      if (decoded['eof']):
-        log("[completed]")
-        sys.exit(0)
+        try:
+            decoded = json.loads(data)
+            print decoded
+            # If the EOF flag is set, exit
+            if (decoded['eof']):
+                log("[completed]")
+                sys.exit(0)
 
-      # If there is data, we accept it and print it out
-      if (decoded['data']):
-        # If we receive data, we assume it's in-order
-        # You will need to do much more here
-        # format: [recv data] <sequence> (data.length) ACCEPTED (in-order)
-        process_data(decoded);
-      # Send back an ack to the sender
-      msg = json.dumps({"ack": decoded['sequence'] + len(decoded['data'])})
-      # format: ABOUT TO SEND <current sequence> + <data.length>
-      log("ABOUT TO SEND " + msg)
-      if sock.sendto(msg, addr) < len(msg):
-        log("[error] unable to fully send packet")
+            # If there is data, we accept it and print it out
+            if (decoded['data']):
+                # If we receive data, we assume it's in-order
+                # You will need to do much more here
+                # format: [recv data] <sequence> (data.length) ACCEPTED (in-order)
+                process_data(decoded);
+            # Send back an ack to the sender
+            msg = json.dumps({"ack": decoded['sequence'] + len(decoded['data'])})
+            # format: ABOUT TO SEND <current sequence> + <data.length>
+            log("ABOUT TO SEND " + msg)
+            if sock.sendto(msg, addr) < len(msg):
+                log("[error] unable to fully send packet")
 
-    except (ValueError, KeyError, TypeError) as e:
-      log("[recv corrupt packet]")
-      raise e
-  else:
-    log("[error] timeout")
-    sys.exit(-1)
+        except (ValueError, KeyError, TypeError) as e:
+            log("[recv corrupt packet]")
+            raise e
+    else:
+        log("[error] timeout")
+        sys.exit(-1)

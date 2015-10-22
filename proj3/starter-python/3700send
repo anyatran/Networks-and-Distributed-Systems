@@ -18,7 +18,7 @@ MSG_SIZE = 1500
 DATA_SIZE = 1000
 DATA = {}
 
-TOTAL_DATA
+TOTAL_DATA = 0
 
 TIMEOUT = 30
 SEQUENCE = 0
@@ -94,7 +94,7 @@ def calc_congestion_window_after_new_ack():
     
 
 def log(string):
-  sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
+    sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
 
 ## Calculate checksum
 def digest_data(data):
@@ -103,17 +103,6 @@ def digest_data(data):
     return m.digest()
 
 def process_ack(packet):
-<<<<<<< HEAD
-  #SEQUENCE = packet["ack"]
-  ## if new ack received:
-    ## Update the running estimate of the RTO timer interval.
-    ## Update the congestion window size
-    ## Figure out next state
-  ## if dup ack
-    ## increment
-    ## if 3 dup ack -> fast retransmit and update congestion params
-  log("[recv ack] " + str(SEQUENCE))
-=======
     SEQUENCE = packet["ack"]
     ## if new ack received:
       ## Update the running estimate of the RTO timer interval.
@@ -123,7 +112,6 @@ def process_ack(packet):
       ## increment
       ## if 3 dup ack -> fast retransmit and update congestion params
     log("[recv ack] " + str(SEQUENCE))
->>>>>>> 893ebf2791a750a5e79a7f4f038cc0a751cc491a
 
 def send_next_packet():
     global SEQUENCE
@@ -143,7 +131,7 @@ def send_next_packet():
       	return False
 
 def send_packets():
-	msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False, "digested": digest_data(data)})
+    msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False, "digested": digest_data(data)})
 
 
 # Send first packet
@@ -156,29 +144,28 @@ def read_input():
 
 read_input()
 # Now read in data, send packets
- while True:
-   log("ABOUT TO SLEEP")
-   result = sock.recvfrom(MSG_SIZE)
+while True:
+    log("ABOUT TO SLEEP")
+    result = sock.recvfrom(MSG_SIZE)
 
-   if result:
-     (data, addr) = result
-     try:
-       decoded = json.loads(data)
+    if result:
+        (data, addr) = result
+        try:
+            decoded = json.loads(data)
 
-       ## We process only ACKs and ignore anything else
-       # If there is an ack, send next packet
-       if decoded['ack'] == SEQUENCE:
-         print "HERE"
-         process_ack(decoded)
+            ## We process only ACKs and ignore anything else
+            # If there is an ack, send next packet
+            if decoded['ack'] == SEQUENCE:
+                process_ack(decoded)
        
-         # Try to send next packet; break if no more data
-         if (not send_next_packet()):
-           break
-     except (ValueError, KeyError, TypeError):
-       log("[recv corrupt packet]")
-   else:
-     log("[error] timeout")
-     sys.exit(-1)
+                # Try to send next packet; break if no more data
+                if (not send_next_packet()):
+                    break
+        except (ValueError, KeyError, TypeError):
+            log("[recv corrupt packet]")
+    else:
+        log("[error] timeout")
+        sys.exit(-1)
 
 sock.sendto(json.dumps({"src": 1, "dest": 2, "eof": True, "data": "", "sequence": SEQUENCE, "ack": False}), dest)
 sys.exit(0)

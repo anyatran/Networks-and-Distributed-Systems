@@ -18,7 +18,7 @@ MSG_SIZE = 1500
 TIMEOUT = 30
 
 SEQUENCE = 0
-
+ADV_W = 1
 
 # Bind to localhost and an ephemeral port
 UDP_IP = "127.0.0.1"
@@ -55,22 +55,23 @@ def in_order(packet):
 
 ## Process this data
 def process_data(packet):
-    if (checksum(packet)):
-        if (in_order(packet)):
-            ##++++ store this sequnce here - we accepted this data packet
-            SEQUENCE  = packet['sequence'] + len(packet['data'])
-            log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") ACCEPTED (in-order)")
-            sys.stdout.write(packet['data'])
-        else:
-            ##++++ send ACK (last byte acked - sequence), SACK (this data sequence)
-            ##???? if we recieved package (#4), how do we know that we received package (#3) already and that we sacked it 
-            msg = json.dumps({"ack": SEQUENCE, "sack": decoded['sequence'] + len(decoded['data'])}, )
-            log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") ACCEPTED (out-order)")
-    else:
-        #####??????????? What to do if checksum is invalid
-        log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") IGNORED")
-        ## OR
-        log("[recv corrupt packet]")
+    #if (checksum(packet)):
+    #if (in_order(packet)):
+        ##++++ store this sequnce here - we accepted this data packet
+    SEQUENCE  = packet['sequence'] + len(packet['data'])
+    log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") ACCEPTED (in-order)")
+    sys.stdout.write(packet['data'])
+    ADV_W += 1
+    #else:
+        ##++++ send ACK (last byte acked - sequence), SACK (this data sequence)
+        ##???? if we recieved package (#4), how do we know that we received package (#3) already and that we sacked it 
+        # msg = json.dumps({"ack": SEQUENCE, "sack": decoded['sequence'] + len(decoded['data'])}, )
+        # log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") ACCEPTED (out-order)")
+#else:
+    #####??????????? What to do if checksum is invalid
+    # log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") IGNORED")
+    ## OR
+    # log("[recv corrupt packet]")
 
 # Now listen for packets
 while True:
@@ -95,7 +96,7 @@ while True:
                 # format: [recv data] <sequence> (data.length) ACCEPTED (in-order)
                 process_data(decoded);
             # Send back an ack to the sender
-            msg = json.dumps({"ack": decoded['sequence'] + len(decoded['data'])})
+            msg = json.dumps({"ack": decoded['sequence'] + len(decoded['data']), "adv_w": ADV_W})
             # format: ABOUT TO SEND <current sequence> + <data.length>
             log("ABOUT TO SEND " + msg)
             if sock.sendto(msg, addr) < len(msg):

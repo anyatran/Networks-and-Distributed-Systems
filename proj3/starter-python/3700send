@@ -14,42 +14,14 @@ import select
 import json
 import hashlib
 
-MSG_SIZE = 1500
-DATA_SIZE = 1000
-DATA = {}
-
-TOTAL_DATA = 0
+## Maximum segment size, in bytes. Same for both sending/receiving endpoints.
+MSS = 1000
 
 TIMEOUT = 30
-SEQUENCE = 0
-#ACK = 0
-DUPS_ACK_COUNT = 0
 
-CONGESTION_WIN = 1
-ADV_WIN = 1     ## FLOW CONTROL, ADV WIN FROM RECEIVER
-
-EFFECTIVE_WINDOW = min(CONGESTION_WIN, ADV_WIN)
-#STATE = 0 #0 = slow start, 1 = AI
+# EFFECTIVE_WINDOW = min(CONGESTION_WIN, ADV_WIN)
+# STATE = 0 #0 = slow start, 1 = AI
 ALPHA = 0.875
-
-SSTHRESH = ADV_WIN
-
-all_data = ""
-lastByteSent = 0
-lastByteAcked = 0
-# lastByteSentBefore3xDupAcksRecvd
-# congWindow
-# SSThresh
-# dupACKcount
-# rcvWindow
-
-# onExpiredRTOtimer()
-# onThreeDuplicateACKs()
-# timerExpired()     --> slow start?
-# send()
-# process_ack()
-# resetParametersToSlowStart()
-# calcCongWinAfterNewAck()
 
 # Bind to localhost and an ephemeral port
 IP_PORT = sys.argv[1]
@@ -63,24 +35,117 @@ sock.settimeout(TIMEOUT)
 def log(string):
     sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
 
+
+class Sender(object):
+
+	def __init__(self):
+		#Current congestion window size, in bytes.
+		self.cong_window = MSS
+
+		self.last_byte_sent = -1
+		self.last_byte_acked = -1
+
+		'''
+		The Slow-Start threshold is a dynamically-set value indicating
+		an upper bound on the congestion window above which a
+		TCP sender transitions from Slow-Start to the Congestion Avoidance
+		state. The default value is 65535 bytes (or 64 KBytes).
+		'''
+		self.ssthresh = 65535
+
+
+		self.dup_ack_thresh = 3
+		'''
+		Counter of duplicate acknowledgments.
+		If the counter reaches three (3) or more dup-ACKs, the sender assumes
+		that the oldest unacknowledged segment is lost and needs to be retransmitted. */
+		'''
+		self.dup_ack_count = 0
+
+		'''Last advertised size of the currently available space in the receiver's buffer.'''
+		self.recv_window = 65536
+
+		self.all_data = ""
+
+	## ??? Where this data comes from????
+	def send(self, data):
+		if (len(data) < 0):
+			## nothing to send...
+		else:
+			## there is something to send
+
+			## do something here
+
+			## and then Calculate the sending parameters:
+	 		## 1. How many segments are currently unacknowledged
+			flight_size = self.last_byteSent - self.last_byte_acked
+			## 2. How many segments can still be sent - usable window
+			effective_window = min(self.cong_window, self.recv_window) - flight_size
+			if (effective_window < 0):
+				effective_window = 0
+			log("[congestion window]=" + str(self.cong_window) + " [recv_window]=" + str(self.recv_window) + "[effective window]=" + str(effective_window) + "[flight size]=" + str(flight_size))
+			
+			burst_size = min(effective_window / MSS, '''remaining data - len(all_data[lastByteSent:])?''' / MSS);
+			log("[burst size]=" + str(burst_size))
+
+			if (burst_size > 0) {
+				## Send the "burstSize" worth of segments:
+				i = 0
+				while (i < burst_size) :
+					''' Extract one segment of data'''
+
+					packet = create_packet() 
+
+					if sock.sendto(packet, dest) < len(packet):
+			        	log("[error] unable to fully send packet")
+			      	else:
+			      		self.last_byte_sent += MSS
+			      		log("[last byte sent] " + str(self.last_byte_sent))
+			        	log("[send data] " + str(packet["sequence"]) + " (" + str(len(data)) + ")")
+			        	i++
+
+
+	def create_packet(self):
+		# sequence_number = last_byte_sent + 1
+		# advertised window?
+		# data segment
+		# timestamp
+		0	
+
+	def process_ack(self, packet):
+	    SEQUENCE = packet["ack"]
+	    lastByteAcked = packet["ack"]
+	    CONGESTION_WIN += 1
+	    ADV_WIN = packet["adv_w"]
+	    EFFECTIVE_WINDOW = min(ADV_WIN, CONGESTION_WIN) - (lastByteSent - lastByteAcked)
+	    ## if new ack received:
+	      ## Update the running estimate of the RTO timer interval.
+	      ## Update the congestion window size
+	      ## Figure out next state
+	    ## if dup ack
+	      ## increment
+	      ## if 3 dup ack -> fast retransmit and update congestion params
+	    log("[recv ack] " + str(SEQUENCE))
+
+
 #calculates estimated timeout time based on RTTs
 #Inputs: SampleRTT, old estimatedRTT, alpha
-def estimate_timeout(timestamp, old_rtt):
-    sample_rtt = time.time() - timestamp #current_time - timestamp
-    estimated_rtt = (1 - ALPHA) * old_rtt * (0.875 * ALPHA)
-    return estimated_rtt
+# def estimate_timeout(timestamp, old_rtt):
+#     sample_rtt = time.time() - timestamp #current_time - timestamp
+#     estimated_rtt = (1 - ALPHA) * old_rtt * (0.875 * ALPHA)
+#     return estimated_rtt
 
 ## calculates congestion window
 ## call it when NEW ack was received
-def calc_congestion_window_after_new_ack():
-    global CONGESTION_WIN
+# def calc_congestion_window_after_new_ack():
+    # global CONGESTION_WIN
 
-    if (CONGESTION_WIN < SSTHRESH):
-        #slow start
-        CONGESTION_WIN = CONGESTION_WIN + 1 ##?????????? or cwnd = cwnd + MSS
-    ## congestion avoidance
-    else:
-        CONGESTION_WIN = CONGESTION_WIN + (1/CONGESTION_WIN) ##?????????? or cwnd = cwnd+ mss*(mss/cwnd)
+    # if (CONGESTION_WIN < SSTHRESH):
+    #     #slow start
+    #     CONGESTION_WIN = CONGESTION_WIN + 1 ##?????????? or cwnd = cwnd + MSS
+    # ## congestion avoidance
+    # else:
+    #     CONGESTION_WIN = CONGESTION_WIN + (1/CONGESTION_WIN) ##?????????? or cwnd = cwnd+ mss*(mss/cwnd)
 
 ## if duplicate or old ack:
 # if tcp.ack==snd.una:    # duplicate acknowledgement
@@ -100,48 +165,25 @@ def digest_data(data):
     log("[digested] " + d)
     return 
 
-def process_ack(packet):
-    SEQUENCE = packet["ack"]
-    lastByteAcked = packet["ack"]
-    CONGESTION_WIN += 1
-    ADV_WIN = packet["adv_w"]
-    EFFECTIVE_WINDOW = min(ADV_WIN, CONGESTION_WIN) - (lastByteSent - lastByteAcked)
-    ## if new ack received:
-      ## Update the running estimate of the RTO timer interval.
-      ## Update the congestion window size
-      ## Figure out next state
-    ## if dup ack
-      ## increment
-      ## if 3 dup ack -> fast retransmit and update congestion params
-    log("[recv ack] " + str(SEQUENCE))
+# def send_next_packet(data):
+#     global SEQUENCE
+#     global lastByteSent
 
-def send_next_packet(data):
-    global SEQUENCE
-    global lastByteSent
+#     if (len(data) > 0):
+#       	## binary encode
+#       	msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False}) #, "digested": digest_data(data)})
+#       	SEQUENCE += len(data)
+#       	log("[sequence n] " + str(SEQUENCE))
 
-    if (len(data) > 0):
-      	## binary encode
-      	msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False}) #, "digested": digest_data(data)})
-      	SEQUENCE += len(data)
-      	log("[sequence n] " + str(SEQUENCE))
-
-      	if sock.sendto(msg, dest) < len(msg):
-        	log("[error] unable to fully send packet")
-      	else:
-      		lastByteSent += len(data)
-      		log("[last byte sent] " + str(lastByteSent))
-        	log("[send data] " + str(SEQUENCE) + " (" + str(len(data)) + ")")
-      	return True
-    else:
-      	return False
-
-## Sends packets in effective window
-def send_packets():
-	log("[EFFECTIVE_WINDOW] " + str(EFFECTIVE_WINDOW))
-	while (EFFECTIVE_WINDOW > 0)	
-		data = all_data[SEQUENCE:SEQUENCE+DATA_SIZE]
-		log("[chunk of data] " + data)
-		send_next_packet(data)
+#       	if sock.sendto(msg, dest) < len(msg):
+#         	log("[error] unable to fully send packet")
+#       	else:
+#       		lastByteSent += len(data)
+#       		log("[last byte sent] " + str(lastByteSent))
+#         	log("[send data] " + str(SEQUENCE) + " (" + str(len(data)) + ")")
+#       	return True
+#     else:
+#       	return False
 
 def read_input():
     log("hi")
@@ -151,10 +193,8 @@ def read_input():
 
 read_input()
 
-send_packets()
-# Send first packet
-#send_next_packet()
 
+s = Sender()
 # Now read in data, send packets
 while True:
     log("ABOUT TO SLEEP")
@@ -167,18 +207,18 @@ while True:
 
             ## We process only ACKs and ignore anything else
             # If there is an ack, send next packet
-            if decoded['ack'] == SEQUENCE:
-                process_ack(decoded)
+            if decoded['ack']: # == SEQUENCE:
+                s.process_ack(decoded)
        
                 # Try to send next packet; break if no more data
                 # if (not send_next_packet()):
                 #     break
-                send_packets()
+                s.send()
         except (ValueError, KeyError, TypeError):
             log("[recv corrupt packet]")
     else:
         log("[error] timeout")
         sys.exit(-1)
 
-sock.sendto(json.dumps({"src": 1, "dest": 2, "eof": True, "data": "", "sequence": SEQUENCE, "ack": False}), dest)
+#sock.sendto(json.dumps({"src": 1, "dest": 2, "eof": True, "data": "", "sequence": SEQUENCE, "ack": False}), dest)
 sys.exit(0)

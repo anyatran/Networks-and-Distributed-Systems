@@ -104,6 +104,27 @@ class Sender(object):
                         log("[send data] " + str(packet["sequence"]) + " (" + str(len(data)) + ")")
                         i+=1
 
+    def process_ack(self, packet):
+    	self.recv_window = packet["ack_w"]
+
+    	## Is this a newly acknowledged segment (i.e., not a duplicate ACK)?
+		if (packet["sequence_number"] > (self.last_byte_acked + 1)) {
+			// Let the current state process a "new" acknowledgment
+			currentState = currentState.handleNewACK(ack_);
+
+	    	// If all outstanding data at "dupACKthreshold" dupACKs have been ACK-ed,
+	    	// then reset the indicator parameter.
+	    	if (lastByteSentBefore3xDupAcksRecvd <= lastByteAcked) {
+	    		lastByteSentBefore3xDupAcksRecvd = -1;
+	    	}
+		} else {	// duplicate ACK
+			// Let the current state process a "duplicate" acknowledgment
+			try {
+				currentState = currentState.handleDupACK(ack_);
+			} catch (Exception ex_) {
+				System.out.println("tcp.Sender.handle(): " + ex_.toString());
+			}
+		}
 
     def create_packet(self):
         # sequence_number = last_byte_sent + 1
@@ -113,6 +134,7 @@ class Sender(object):
         0	
 
     def process_ack(self, packet):
+
         SEQUENCE = packet["ack"]
         lastByteAcked = packet["ack"]
         CONGESTION_WIN += 1

@@ -25,9 +25,6 @@ SEQUENCE = 0
 #ACK = 0
 DUPS_ACK_COUNT = 0
 
-LAST_BYTE_SENT = 0
-LAST_BYTE_ACKED = 0
-
 CONGESTION_WIN = 1
 ADV_WIN = 1     ## FLOW CONTROL, ADV WIN FROM RECEIVER
 
@@ -38,8 +35,8 @@ ALPHA = 0.875
 SSTHRESH = ADV_WIN
 
 all_data = ""
-# lastByteSent
-# lastByteAcked
+lastByteSent = 0
+lastByteAcked = 0
 # lastByteSentBefore3xDupAcksRecvd
 # congWindow
 # SSThresh
@@ -140,7 +137,7 @@ def send_next_packet(data):
 
 ## Sends packets in effective window
 def send_packets():
-	log("[EFFECTIVE_WINDOW] " + EFFECTIVE_WINDOW)
+	log("[EFFECTIVE_WINDOW] " + str(EFFECTIVE_WINDOW))
 	while (EFFECTIVE_WINDOW > 0)	
 		data = all_data[SEQUENCE:SEQUENCE+DATA_SIZE]
 		log("[chunk of data] " + data)
@@ -148,10 +145,8 @@ def send_packets():
 
 def read_input():
     log("hi")
-    print("hi")
     global all_data
     all_data = sys.stdin.read()
-    print("data", len(all_data))
     log("[all data]" + all_data)
 
 read_input()

@@ -55,6 +55,7 @@ def in_order(packet):
 
 ## Process this data
 def process_data(packet):
+    global ADV_W
     #if (checksum(packet)):
     #if (in_order(packet)):
         ##++++ store this sequnce here - we accepted this data packet

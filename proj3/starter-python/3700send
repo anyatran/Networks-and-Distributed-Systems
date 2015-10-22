@@ -41,7 +41,9 @@ class Sender(object):
     def __init__(self):
         #Current congestion window size, in bytes.
         self.cong_window = MSS
-
+        '''Last advertised size of the currently available space in the receiver's buffer.'''
+        self.recv_window = 65536
+        self.window = min(self.cong_window, self.recv_window)
         self.last_byte_sent = -1
         self.last_byte_acked = -1
 
@@ -51,7 +53,7 @@ class Sender(object):
         TCP sender transitions from Slow-Start to the Congestion Avoidance
         state. The default value is 65535 bytes (or 64 KBytes).
         '''
-        self.ssthresh = 65535
+        self.ssthresh = self.recv_window
 
 
         self.dup_ack_thresh = 3
@@ -62,8 +64,6 @@ class Sender(object):
         '''
         self.dup_ack_count = 0
 
-        '''Last advertised size of the currently available space in the receiver's buffer.'''
-        self.recv_window = 65536
 
         self.all_data = ""
 
@@ -79,9 +79,9 @@ class Sender(object):
 
             ## and then Calculate the sending parameters:
             ## 1. How many segments are currently unacknowledged
-            flight_size = self.last_byteSent - self.last_byte_acked
+            flight_size = self.last_byte_sent - self.last_byte_acked
             ## 2. How many segments can still be sent - usable window
-            effective_window = min(self.cong_window, self.recv_window) - flight_size
+            effective_window = self.window - flight_size
             if (effective_window < 0):
                 effective_window = 0
             log("[congestion window]=" + str(self.cong_window) + " [recv_window]=" + str(self.recv_window) + "[effective window]=" + str(effective_window) + "[flight size]=" + str(flight_size))

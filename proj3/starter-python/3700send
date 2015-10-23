@@ -85,15 +85,15 @@ class Sender(object):
             if (effective_window < 0):
                 effective_window = 0
             log("[congestion window]=" + str(self.cong_window) + " [recv_window]=" + str(self.recv_window) + "[effective window]=" + str(effective_window) + "[flight size]=" + str(flight_size))
-            
-            burst_size = min(effective_window / MSS) ##, '''remaining data - len(all_data[lastByteSent:])?''' / MSS);
+        
+            burst_size = effective_window / MSS ##, ##remaining data - len(all_data[lastByteSent:])? / MSS);
             log("[burst size]=" + str(burst_size))
 
             if (burst_size > 0): 
                 ## Send the "burstSize" worth of segments:
                 i = 0
                 while (i < burst_size) :
-                    ''' Extract one segment of data'''
+                    ##Extract one segment of data
                     packet = create_packet() 
                     log("[created this packet]=" + json.dumps(packet))
 
@@ -104,7 +104,7 @@ class Sender(object):
                         log("[last byte sent] " + str(self.last_byte_sent))
                         log("[send data] " + str(packet["sequence_number"]) + " (" + str(len(data)) + ")")
                         i = i + 1
-
+            '''
     def calc_cong_window_after_new_ask(self, sequence_number, last_acked):
 
         ## initial slow start:
@@ -166,12 +166,10 @@ class Sender(object):
         self.dup_ack_count = self.dup_ack_count + 1
 
         # If three duplicate ACKs -> fast retransmit
-        if (self.dup_ack_count >= 3) {
-            self.fast_retransmit(packet);
+        if (self.dup_ack_count >= 3):
+            self.fast_retransmit(packet)
 
         ## else do nothing :)
-
-    }
 
     def process_ack(self, packet):
 
@@ -197,7 +195,7 @@ class Sender(object):
         log("[recv ack] " + packet["sequence_number"])
 
     def create_packet(self):
-        return {"sequence_number": self.last_byte_sent, "data": all_data[self.last_byte_sent: self.last_byte_sent + MSS], eof: False, ack: False}  
+        return json.dumps({"sequence_number": self.last_byte_sent, "data": all_data[self.last_byte_sent: self.last_byte_sent + MSS], "eof": False, "ack": False})  
 
         
 
@@ -272,7 +270,7 @@ read_input()
 # Now read in data, send packets
 while True:
     log("ABOUT TO SLEEP")
-    result = sock.recvfrom(MSG_SIZE)
+    result = sock.recvfrom(MSS)
 
     if result:
         (data, addr) = result

@@ -129,9 +129,11 @@ def decode(data):
     head_size = struct.calcsize(unpack_format)
     header = data[:head_size]
     body = data[head_size:]
+    log("original data=" + data + " header size=" + str(head_size) + " header=" + header + " body=" + body)
     unpacked = struct.unpack(unpack_format, header)
-    log("[received unpacked data]=" + str(unpacked) + "    [body] = " + body)
-    sequence_number, ack, eof, timestamp, data_check= unpacked
+    log("[received unpacked data]=" + unpacked)
+    sequence_number, ack, eof, timestamp, data_check = unpacked
+    log("sequence_number=" + str(sequence_number) + " ack=" + str(ack) + " eof=" + str(eof) + " timestamp=" + str(timestamp) + " data_check=" + data_check)
     data_segment = { "sequence_number": sequence_number, 
                     "ack": ack,
                     "eof": eof,

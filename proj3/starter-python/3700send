@@ -95,7 +95,7 @@ class Sender(object):
                 while (i < burst_size) :
                     ##Extract one segment of data
                     packet = self.create_packet() 
-                    log("[created this packet]=" + json.dumps(packet))
+                    log("[created this packet]=" + str(packet))
 
                     if sock.sendto(packet, dest) < len(packet):
                         log("[error] unable to fully send packet")
@@ -117,6 +117,9 @@ class Sender(object):
         #len(hashcode) is = 32
         segment = all_data[self.last_byte_sent: self.last_byte_sent + MSS]
         tcp_header = struct.pack("!LBBd32s", self.last_byte_sent, False, False, time.time(), self.data_check(segment))
+        log("last byte sent=" + str(self.last_byte_sent) + " ack=" + str(False) + " eof=" + str(False) + " time=" + str(time.time()) + " segment check=" + str(self.data_check(segment)))
+        #log("last byte sent=" + str(type(self.last_byte_sent)) + " ack=" + str(type(False)) + " eof=" + str(type(False)) + " time=" + str(type(time.time())) + " segment check=" + str(type(self.data_check(segment))))
+        log("tcp header=" + tcp_header)
         packet = tcp_header + segment
         return packet
    

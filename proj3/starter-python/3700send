@@ -46,8 +46,8 @@ class Sender(object):
         '''Last advertised size of the currently available space in the receiver's buffer.'''
         self.recv_window = 65536
         #self.window = min(self.cong_window, self.recv_window)
-        self.last_byte_sent = -1
-        self.last_byte_acked = -1
+        self.last_byte_sent = 0
+        self.last_byte_acked = 0
         self.last_byte_sent_before_3dup_acks = -1
 
         '''
@@ -104,7 +104,12 @@ class Sender(object):
                         log("[last byte sent] " + str(self.last_byte_sent))
                         log("[send data] " + str(packet["sequence_number"]) + " (" + str(len(data)) + ")")
                         i = i + 1
-            
+    
+
+
+    def create_packet(self):
+        return json.dumps({"sequence_number": self.last_byte_sent, "data": all_data[self.last_byte_sent: self.last_byte_sent + MSS], "eof": False, "ack": False})  
+   
     def calc_cong_window_after_new_ask(self, sequence_number, last_acked):
 
         ## initial slow start:
@@ -193,9 +198,6 @@ class Sender(object):
             ## figure out current state and process dup ack accordingly
             self.process_dup_ack(packet)
         log("[recv ack] " + packet["sequence_number"])
-
-    def create_packet(self):
-        return json.dumps({"sequence_number": self.last_byte_sent, "data": all_data[self.last_byte_sent: self.last_byte_sent + MSS], "eof": False, "ack": False})  
 
         
 

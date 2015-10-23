@@ -2,10 +2,6 @@
 #
 # CS3700, Spring 2015
 # Project 2 Starter Code
-#
-# SACK: https://www.rfc-editor.org/rfc/rfc2018.txt
-#       http://packetlife.net/blog/2010/jun/17/tcp-selective-acknowledgments-sack/
-#       http://www.tcpipguide.com/free/t_TCPNonContiguousAcknowledgmentHandlingandSelective-4.htm
 
 import sys
 import socket
@@ -13,6 +9,9 @@ import time
 import datetime
 import select
 import json
+import struct
+import hashlib
+import struct 
 
 MSG_SIZE = 1500
 TIMEOUT = 30
@@ -23,6 +22,7 @@ ADV_W = 1
 # Bind to localhost and an ephemeral port
 UDP_IP = "127.0.0.1"
 UDP_PORT = 0
+
 
 def log(string):
     sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
@@ -38,70 +38,102 @@ LAST_SEQ_RECV = 0
 UDP_PORT = sock.getsockname()[1]
 log("[bound] " + str(UDP_PORT))
 
+class Receiver(object):
+    
+    def __init__(self):
+        self.last_byte_rcv = 0
+        self.data_rcv = ""    
 
-#HASHLIB.MD5(DATA)
-## Check if checksum is valid
-def checksum(packet):
-    return true
-    '''
-    try:
-        return str(binascii.crc32(packet['data']) & 0xffffffff) == packet['checksum']
-    except:
-        return False
-    '''
-## Check if this data came in order
-def in_order(packet):
-    return True
+    ## Check if this data came in order
+    def in_order(self, packet):
+        return True
+    
+    # send ACKs to sender
+    def send_ack(self, seq, time,  address):
+        # ****** INCREMENT BY 1
+        msg = json.dumps({"ack": seq + 1, "time": time}) #({"ack": decoded['sequence'] + len(decoded['data']) + 1})
+        # format: ABOUT TO SEND <current sequence> + <data.length>
+        log("ABOUT TO SEND ACK" + msg)
+        if sock.sendto(msg, address) < len(msg):
+            log("[error] unable to fully send packet")
+    
+    # send Duplicate ACKs
+    def send_dack(self, seq, time, address):
+        msg = json.dumps({"ack": seq + 1, "time": time})
+        log("ABOUT TO SEND DACK " + msg)
+        if sock.sendto(msg, address) < len(msg):
+            log("[error] unable to fully send packet")
 
-## Process this data
-def process_data(packet):
-    global ADV_W
-    #if (checksum(packet)):
-    #if (in_order(packet)):
-        ##++++ store this sequnce here - we accepted this data packet
-    SEQUENCE  = packet['sequence'] + len(packet['data'])
-    log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") ACCEPTED (in-order)")
-    sys.stdout.write(packet['data'])
-    ADV_W += 1
+
+    ## Process this data
+    ## data structure: (seq, ack, eof, time, hash, data)
+    def process_data(self, packet, addr):
+        # verify for the data first
+        seq = packet[0]
+        ack = packet[1]
+        eof = packet[2]
+        time = packet[3]
+        hashcode = packet[4]
+        data = packet[5]
+        recv_hash = hashlib.md5(data)
+        # if it's the same data and nothing has been lost
+        if (hashcode == recv_hash.hexdigest()):
+            # if it's in order
+            if (self.last_byte_rcv + 1 == seq):
+                log("[recv data] " + str(seq) + " (" + str(data) + ") ACCEPTED (in-order)")
+                self.last_byte_rcv = seq + len(data)
+                #send ACKKKKKKKKKKK
+                sys.stdout.write(data)
+                self.data_rcv += data
+                self.send_ack(self.last_byte_rcv, time, addr)
+            # if out of order - send DACKs
+            else:
+                self.send_dack(self.last_byte_rcv, time, addr)
+    
+        # if the data is corrupted - send dack 
+        else:
+            log("[CORRUPTED] " + str(seq))
+            self.send_dack(self.last_byte_rcv, time, addr)
+        #else:
+            ##++++ send ACK (last byte acked - sequence), SACK (this data sequence)
+            ##???? if we recieved package (#4), how do we know that we received package (#3) already and that we sacked it 
+            # msg = json.dumps({"ack": SEQUENCE, "sack": decoded['sequence'] + len(decoded['data'])}, )
+            # log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") ACCEPTED (out-order)")
     #else:
-        ##++++ send ACK (last byte acked - sequence), SACK (this data sequence)
-        ##???? if we recieved package (#4), how do we know that we received package (#3) already and that we sacked it 
-        # msg = json.dumps({"ack": SEQUENCE, "sack": decoded['sequence'] + len(decoded['data'])}, )
-        # log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") ACCEPTED (out-order)")
-#else:
-    #####??????????? What to do if checksum is invalid
-    # log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") IGNORED")
-    ## OR
-    # log("[recv corrupt packet]")
+        #####??????????? What to do if checksum is invalid
+        # log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") IGNORED")
+        ## OR
+        # log("[recv corrupt packet]")
 
 # Now listen for packets
 while True:
-    result = sock.recvfrom(MSG_SIZE)
-
+    res = sock.recvfrom(MSG_SIZE)
+    '''
+    need to unpack the result first
+    - need the format: WAITING FOR YULIAAAAAAA
+    '''
+    unpack_format = ""
+    result = struct.unpack(unpack_format, res)
     # If nothing is ready, we hit the timeout
     if result:
-        (data, addr) = result
-
+        #(seq, ack, eof, time, hash, data)
+        data = result
+        addr = res
+        '''
+        ** assume sender will send a hexdigested hash already instead of an entire obj
+        '''
         try:
-            decoded = json.loads(data)
-            print decoded
+            #decoded = json.loads(data)
+            #print decoded
             # If the EOF flag is set, exit
-            if (decoded['eof']):
+            if (data[3]):#(decoded['eof']):
                 log("[completed]")
                 sys.exit(0)
 
             # If there is data, we accept it and print it out
-            if (decoded['data']):
+            if (data[5]):#(decoded['data']):
                 # If we receive data, we assume it's in-order
-                # You will need to do much more here
-                # format: [recv data] <sequence> (data.length) ACCEPTED (in-order)
-                process_data(decoded);
-            # Send back an ack to the sender
-            msg = json.dumps({"ack": decoded['sequence'] + len(decoded['data']), "adv_w": ADV_W})
-            # format: ABOUT TO SEND <current sequence> + <data.length>
-            log("ABOUT TO SEND " + msg)
-            if sock.sendto(msg, addr) < len(msg):
-                log("[error] unable to fully send packet")
+                process_data(result, addr);
 
         except (ValueError, KeyError, TypeError) as e:
             log("[recv corrupt packet]")

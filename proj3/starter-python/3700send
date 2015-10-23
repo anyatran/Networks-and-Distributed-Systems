@@ -102,7 +102,7 @@ class Sender(object):
                     else:
                         self.last_byte_sent += MSS
                         log("[last byte sent] " + str(self.last_byte_sent))
-                        log("[send data] " + str(packet["sequence_number"]) + " (" + str(len(data)) + ")")
+                        log("[send data] " + str(self.last_byte_sent) + " (" + str(len(packet)) + ")")
                         i = i + 1
     
     def data_check(self, data):

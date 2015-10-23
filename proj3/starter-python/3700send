@@ -94,7 +94,7 @@ class Sender(object):
                 i = 0
                 while (i < burst_size) :
                     ##Extract one segment of data
-                    packet = create_packet() 
+                    packet = self.create_packet() 
                     log("[created this packet]=" + json.dumps(packet))
 
                     if sock.sendto(packet, dest) < len(packet):
@@ -104,7 +104,7 @@ class Sender(object):
                         log("[last byte sent] " + str(self.last_byte_sent))
                         log("[send data] " + str(packet["sequence_number"]) + " (" + str(len(data)) + ")")
                         i = i + 1
-            '''
+            
     def calc_cong_window_after_new_ask(self, sequence_number, last_acked):
 
         ## initial slow start:
@@ -133,7 +133,7 @@ class Sender(object):
 
 
         # Update congestion window
-        self.cong_window = calc_cong_window_after_new_ask(packet["sequence_number"], last_byte_acked_previous);
+        self.cong_window = self.calc_cong_window_after_new_ask(packet["sequence_number"], last_byte_acked_previous);
 
         # ? also reset the counter of duplicate ACKs.
         self.dup_ack_count = 0;
@@ -182,7 +182,7 @@ class Sender(object):
             # currentState = currentState.handleNewACK(ack);
 
             ## figure out current state and process new ack accordingly
-            process_new_ack(packet)
+            self.process_new_ack(packet)
 
             # If all outstanding data at 3 dupACKs have been acked, reset the indicator parameter.
             if (self.last_byte_sent_before_3dup_acks <= self.last_byte_acked):
@@ -191,7 +191,7 @@ class Sender(object):
         ## If duplicate ack
         else:
             ## figure out current state and process dup ack accordingly
-            process_dup_ack(packet)
+            self.process_dup_ack(packet)
         log("[recv ack] " + packet["sequence_number"])
 
     def create_packet(self):

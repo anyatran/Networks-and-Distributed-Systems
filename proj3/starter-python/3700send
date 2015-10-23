@@ -114,8 +114,9 @@ class Sender(object):
 
 
     def create_packet(self):
+        #len(hashcode) is = 32
         segment = all_data[self.last_byte_sent: self.last_byte_sent + MSS]
-        tcp_header = struct.pack("!LBBLL", self.last_byte_sent, False, False, time.time(), self.data_check(segment))
+        tcp_header = struct.pack("!LBBd32s", self.last_byte_sent, False, False, time.time(), self.data_check(segment))
         packet = tcp_header + segment
         return packet
    

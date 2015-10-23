@@ -51,18 +51,19 @@ class Receiver(object):
         return True
     
     # send ACKs to sender
-    def send_ack(self, seq, time,  address):
-        # ****** INCREMENT BY 1
-        msg = json.dumps({"ack": seq + 1, "time": time}) #({"ack": decoded['sequence'] + len(decoded['data']) + 1})
+    def send_ack(self, time,  address):
+        msg = struct.pack("!Ld", self.next_byte_expected, time)
+        #msg = json.dumps({"ack": next_seq, "time": time}) #({"ack": decoded['sequence'] + len(decoded['data']) + 1})
         # format: ABOUT TO SEND <current sequence> + <data.length>
-        log("ABOUT TO SEND ACK" + msg)
+        log("ABOUT TO SEND ACK" + self.next_byte_expected)
         if sock.sendto(msg, address) < len(msg):
             log("[error] unable to fully send packet")
     
     # send Duplicate ACKs
-    def send_dack(self, seq, time, address):
-        msg = json.dumps({"ack": seq + 1, "time": time})
-        log("ABOUT TO SEND DACK " + msg)
+    def send_dack(self, time, address):
+        msg= struct.pack("!Ld", self.next_byte_expected, time)
+        #msg = json.dumps({"ack": seq + 1, "time": time})
+        log("ABOUT TO SEND DACK : expected seq: " + str(self.next_byte_expected))
         if sock.sendto(msg, address) < len(msg):
             log("[error] unable to fully send packet")
 
@@ -71,17 +72,22 @@ class Receiver(object):
         recv_hash = hashlib.md5(packet["data"])
         return packet["hash_check"] == recv_hash.hexdigest()
 
-    def process_out_of_order_data_segment(packet):
-
-        self.buffered_segments.add(packet)
+    def process_corrupted_data(self, packet, addr):
+        log("[CORRUPTED] " + str(packet["sequence_number"]))
+        self.send_dack(self.next_byte_expected, packet["timestamp"], addr)
+        
+    def process_out_of_order_data_segment(packet, addr):
+        log("[OUT OF ORDER] " + str(packet["sequence_number"]))
+        self.send_dack(packet["timestamp"], addr)
+        #self.buffered_segments.add(packet)
 
         # Also, we CANNOT assume that all currently buffered segments
         # have sequence number lower than the one that just arrived.
-        self.last_byte_rcv = max(self.last_byte_rcv, packet["sequence_number"] + len(packet["data"]) - 1)
+        #self.last_byte_rcv = max(self.last_byte_rcv, packet["sequence_number"] + len(packet["data"]) - 1)
 
         # should we reduce our window?? even though we are not using it yet.. 
         # self.rcv_window = self.max_rcv_window - (self.last_byte_rcv - self.next_byte_expected)
-        ack = {adv_w: rcv_window, sequence_number: next_byte_expected, timestamp: -1} # -1 or what?
+        #ack = {"adv_w": self.rcv_window, "sequence_number": self.next_byte_expected, timestamp: -1} # -1 or what?
 
     ## Process this data
     ## data structure: (seq, ack, eof, time, hash, data)
@@ -91,44 +97,47 @@ class Receiver(object):
             # if it's in order
             if (packet["sequence_number"] == self.next_byte_expected): #(self.last_byte_rcv + 1 == seq):
                 log("[recv data] " + str(seq) + " (" + str(data) + ") ACCEPTED (in-order)")
-                self.next_byte_expected = packet["sequence_number"] + len(packet["data"]) ## ??????
-
-                if (len(self.buffered_segments) < 0):
+                self.next_byte_expected = packet["sequence_number"] + len(packet["data"]) ## 
+                
+                #if (len(self.buffered_segments) < 0):
                     # No previously buffered segments.
-                    self.last_byte_rcv = segment["sequence_number"] + len(segment["data"]) - 1;
-                else:
+                    #self.last_byte_rcv = segment["sequence_number"] + len(segment["data"]) - 1;
+                #else:
                     # Some segments were previously buffered.
                     # Checked whether this segment filled any gaps for
                     # the possible buffered segments.  If yes,
                     # this will update "last_byte_recv"
-                    self.check_buffered()
+                    #self.check_buffered()
 
 
                 # ack = {adv_w: current_rcv_w, sequence_number: next_byte_expected, timestamp: segment["timestamp"]}
-                self.send_ack(self.last_byte_rcv, time, addr)
+                self.send_ack(time, addr)
             # if out of order - send DACKs
             else:
-                self.process_out_of_order_data_segment(packet)
+                self.process_out_of_order_data_segment(packet, addr)
                 # self.send_dack(self.last_byte_rcv, time, addr)
     
         # if the data is corrupted - send dack 
         else:
             # log("[CORRUPTED] " + str(seq))
-            self.process_out_of_order_data_segment(packet)
+            self.process_currupted_data(packet, addr)
             # self.send_dack(self.last_byte_rcv, time, addr)
 
 
 def decode(data):
-    unpack_format = "!LBBLL"    
-    unpacked = struct.unpack(unpack_format, data)
-    log("[received unpacked data]=" + str(unpacked))
-    sequence_number, ack, eof, timestamp, data_check, data = unpacked
+    unpack_format = "!LBBd32s" # time is a double    
+    head_size = struct.calcsize(unpack_format)
+    header = data[:head_size]
+    body = data[head_size:]
+    unpacked = struct.unpack(unpack_format, header)
+    log("[received unpacked data]=" + str(unpacked) + "    [body] = " + body)
+    sequence_number, ack, eof, timestamp, data_check= unpacked
     data_segment = { "sequence_number": sequence_number, 
                     "ack": ack,
                     "eof": eof,
                     "timestamp": timestamp,
                     "hash_check": data_check,
-                    "data": data
+                    "data": body
                     }
     log("[data segment]=" + json.dumps(data_segment))
     return data_segment

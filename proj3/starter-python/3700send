@@ -105,10 +105,19 @@ class Sender(object):
                         log("[send data] " + str(packet["sequence_number"]) + " (" + str(len(data)) + ")")
                         i = i + 1
     
+    def data_check(self, data):
+        check = hashlib.md5(data)
+        log("[check hash object]=" + str(check))
+        digested = check.hexdigest()
+        log("[check digested]=" + str(digested) + "for data=" + str(data))
+        return digested
 
 
     def create_packet(self):
-        return json.dumps({"sequence_number": self.last_byte_sent, "data": all_data[self.last_byte_sent: self.last_byte_sent + MSS], "eof": False, "ack": False})  
+        segment = all_data[self.last_byte_sent: self.last_byte_sent + MSS]
+        tcp_header = struct.pack("!LBBL", self.last_byte_sent, False, False, self.data_check(segment))
+        packet = tcp_header + segment
+        return packet
    
     def calc_cong_window_after_new_ask(self, sequence_number, last_acked):
 

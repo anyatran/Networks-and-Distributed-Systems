@@ -30,56 +30,57 @@
  send_ack
  receive
 
- 	onExpiredRTOtimer() 
-		// Reduce the slow start threshold using
-		int flightSize = lastByteSent - lastByteAcked;
-		SSThresh = flightSize / 2;
-		SSThresh = Math.max(SSThresh, 2*MSS); 			
-
-		// Perform the exponential backoff for the RTO timeout interval 
-		timerBackoff();
-		// and re-start the timer, for the outstanding segments.
-		startRTOtimer();
-
-		// Reset the congestion parameters
-		resetParametersToSlowStart();
-
-	timerBackoff() 
-		if (timeoutInterval < maxTimeoutInterval) {
-			backoff <<= 1;	// double the backoff
-
-
 	resetParametersToSlowStart() 
 		congWindow = MSS;
 	    dupACKcount = 0;
 		lastByteSentBefore3xDupAcksRecvd = -1;
 
 
-	onThreeDuplicateACKs() 
-		// Mark the sequence number of the last currently
-		// unacknowledged byte, so that we know when all
-		// currently outstanding data will be acknowledged.
-		// This ACK is known as a "recovery ACK".
-		// This field is used to decide when Fast Recovery should end.
-		//@See TCPSenderStateFastRecovery#handleNewACK()
-		if (lastByteSentBefore3xDupAcksRecvd < 0)	// if not already set:
-			lastByteSentBefore3xDupAcksRecvd = lastByteSent;
+receiver:
+	buffer = []						for out of order packets, should be in ascending order by sequence number to fill in gaps later
+	last_byte_recv = -1  			last byte received in sequence
+	next_byte_expected = 0
+	rcv_window
 
-		// reduce the slow start threshold
-		int flightSize = lastByteSent - lastByteAcked;
-		SSThresh = flightSize_ / 2;
-		// Set to an integer multiple of MSS
-		SSThresh -= (SSThresh % MSS);
-		SSThresh = Math.max(SSThresh, 2*MSS);
+	process_data_segment(segment)
+		if (check_data(segment)):
+			return
 
-		// congestion window = 1/2 FlightSize + 3xMSS:
-		congWindow = Math.max(flightSize/2, 2*MSS) + 3*MSS;
-		
-		// Retransmit the oldest unacknowledged (presumably lost) segment.
-		// Fast Retransmit
-		// The timestamp of retransmitted segments should be set to "-1"
-	    // to avoid performing RTT estimation based on retransmitted segments:
-		oldestSegment.timestamp = -1;
-	    send(oldestSegment);
-	
-	
+		# if segment arrived in order
+		if (segment["sequence_number"] == next_byte_expected):
+			next_byte_expected = segment["sequence_number"] + len(segment) # or MSS or 1500?
+
+			if (len(buffer) < 0):
+				# No previously buffered segments.
+				last_byte_recvd = segment["sequence_number"] + len(segment) - 1;
+
+			else:
+				# Some segments were previously buffered.
+				# Checked whether this segment filled any gaps for
+				# the possible buffered segments.  If yes,
+				# this will update "last_byte_recv"
+				check_buffered();
+
+
+			ack = {adv_w: current_rcv_w, sequence_number: next_byte_expected, timestamp: segment["timestamp"]}
+
+
+		else:
+			# should we buffer them?? 
+			process_out_of_order_data_segment(segment)
+
+
+	process_out_of_order_data_segment(segment):
+
+		buffer.add(segment)
+
+		# Also, we CANNOT assume that all currently buffered segments
+		# have sequence number lower than the one that just arrived.
+		last_byte_recv = max(last_byte_recv, segment["sequence_number"] + len(segment) - 1)
+
+		# should we reduce our window?? even though we are not using it yet.. 
+		rcv_window = max_rcv_window - (last_byte_recv - next_byte_expected)
+
+		ack = {adv_w: rcv_window, sequence_number: next_byte_expected, timestamp: -1} # -1 or what?
+	}
+

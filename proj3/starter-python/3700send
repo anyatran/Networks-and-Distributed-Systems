@@ -115,7 +115,7 @@ class Sender(object):
 
     def create_packet(self):
         segment = all_data[self.last_byte_sent: self.last_byte_sent + MSS]
-        tcp_header = struct.pack("!LBBL", self.last_byte_sent, False, False, self.data_check(segment))
+        tcp_header = struct.pack("!LBBLL", self.last_byte_sent, False, False, time.time(), self.data_check(segment))
         packet = tcp_header + segment
         return packet
    

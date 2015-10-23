@@ -42,7 +42,9 @@ class Receiver(object):
     
     def __init__(self):
         self.last_byte_rcv = 0
+        self.next_byte_expected = 0
         self.data_rcv = ""    
+        self.buffered_segments = []
 
     ## Check if this data came in order
     def in_order(self, packet):
@@ -65,60 +67,83 @@ class Receiver(object):
             log("[error] unable to fully send packet")
 
 
+    def check_data(self, packet):
+        recv_hash = hashlib.md5(packet["data"])
+        return packet["hash_check"] == recv_hash.hexdigest()
+
+    def process_out_of_order_data_segment(packet):
+
+        self.buffered_segments.add(packet)
+
+        # Also, we CANNOT assume that all currently buffered segments
+        # have sequence number lower than the one that just arrived.
+        self.last_byte_rcv = max(self.last_byte_rcv, packet["sequence_number"] + len(packet["data"]) - 1)
+
+        # should we reduce our window?? even though we are not using it yet.. 
+        # self.rcv_window = self.max_rcv_window - (self.last_byte_rcv - self.next_byte_expected)
+        ack = {adv_w: rcv_window, sequence_number: next_byte_expected, timestamp: -1} # -1 or what?
+
     ## Process this data
     ## data structure: (seq, ack, eof, time, hash, data)
     def process_data(self, packet, addr):
-        # verify for the data first
-        seq = packet[0]
-        ack = packet[1]
-        eof = packet[2]
-        time = packet[3]
-        hashcode = packet[4]
-        data = packet[5]
-        recv_hash = hashlib.md5(data)
-        # if it's the same data and nothing has been lost
-        if (hashcode == recv_hash.hexdigest()):
+
+        if (check_data(packet)):
             # if it's in order
-            if (self.last_byte_rcv + 1 == seq):
+            if (packet["sequence_number"] == self.next_byte_expected): #(self.last_byte_rcv + 1 == seq):
                 log("[recv data] " + str(seq) + " (" + str(data) + ") ACCEPTED (in-order)")
-                self.last_byte_rcv = seq + len(data)
-                #send ACKKKKKKKKKKK
-                sys.stdout.write(data)
-                self.data_rcv += data
+                self.next_byte_expected = packet["sequence_number"] + len(packet["data"]) ## ??????
+
+                if (len(self.buffered_segments) < 0):
+                    # No previously buffered segments.
+                    self.last_byte_rcv = segment["sequence_number"] + len(segment["data"]) - 1;
+                else:
+                    # Some segments were previously buffered.
+                    # Checked whether this segment filled any gaps for
+                    # the possible buffered segments.  If yes,
+                    # this will update "last_byte_recv"
+                    self.check_buffered()
+
+
+                # ack = {adv_w: current_rcv_w, sequence_number: next_byte_expected, timestamp: segment["timestamp"]}
                 self.send_ack(self.last_byte_rcv, time, addr)
             # if out of order - send DACKs
             else:
-                self.send_dack(self.last_byte_rcv, time, addr)
+                self.process_out_of_order_data_segment(packet)
+                # self.send_dack(self.last_byte_rcv, time, addr)
     
         # if the data is corrupted - send dack 
         else:
-            log("[CORRUPTED] " + str(seq))
-            self.send_dack(self.last_byte_rcv, time, addr)
-        #else:
-            ##++++ send ACK (last byte acked - sequence), SACK (this data sequence)
-            ##???? if we recieved package (#4), how do we know that we received package (#3) already and that we sacked it 
-            # msg = json.dumps({"ack": SEQUENCE, "sack": decoded['sequence'] + len(decoded['data'])}, )
-            # log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") ACCEPTED (out-order)")
-    #else:
-        #####??????????? What to do if checksum is invalid
-        # log("[recv data] " + str(packet['sequence']) + " (" + str(len(packet['data'])) + ") IGNORED")
-        ## OR
-        # log("[recv corrupt packet]")
+            # log("[CORRUPTED] " + str(seq))
+            self.process_out_of_order_data_segment(packet)
+            # self.send_dack(self.last_byte_rcv, time, addr)
+
+
+def decode(data):
+    unpack_format = "!LBBLL"    
+    unpacked = struct.unpack(unpack_format, data)
+    log("[received unpacked data]=" + str(unpacked))
+    sequence_number, ack, eof, timestamp, data_check, data = unpacked
+    data_segment = { "sequence_number": sequence_number, 
+                    "ack": ack,
+                    "eof": eof,
+                    "timestamp": timestamp,
+                    "hash_check": data_check,
+                    "data": data
+                    }
+    log("[data segment]=" + json.dumps(data_segment))
+    return data_segment
 
 # Now listen for packets
 while True:
-    res = sock.recvfrom(MSG_SIZE)
-    '''
-    need to unpack the result first
-    - need the format: WAITING FOR YULIAAAAAAA
-    '''
-    unpack_format = ""
-    result = struct.unpack(unpack_format, res)
+    result = sock.recvfrom(MSG_SIZE)
+
     # If nothing is ready, we hit the timeout
     if result:
         #(seq, ack, eof, time, hash, data)
-        data = result
-        addr = res
+        
+        (res, addr) = result
+
+        decoded = decode(res)
         '''
         ** assume sender will send a hexdigested hash already instead of an entire obj
         '''
@@ -126,14 +151,14 @@ while True:
             #decoded = json.loads(data)
             #print decoded
             # If the EOF flag is set, exit
-            if (data[3]):#(decoded['eof']):
+            if (decoded["eof"]):#(decoded['eof']):
                 log("[completed]")
                 sys.exit(0)
 
             # If there is data, we accept it and print it out
-            if (data[5]):#(decoded['data']):
+            if (decoded["data"]):#(decoded['data']):
                 # If we receive data, we assume it's in-order
-                process_data(result, addr);
+                process_data(decoded, addr);
 
         except (ValueError, KeyError, TypeError) as e:
             log("[recv corrupt packet]")

@@ -82,5 +82,4 @@ receiver:
 		rcv_window = max_rcv_window - (last_byte_recv - next_byte_expected)
 
 		ack = {adv_w: rcv_window, sequence_number: next_byte_expected, timestamp: -1} # -1 or what?
-	}
 

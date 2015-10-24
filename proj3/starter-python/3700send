@@ -115,10 +115,10 @@ class Sender(object):
         return new_timeout
 
     def digest_data(self, data):
-        s = “”
+        s = ""
         for d in data: 
             s += str(d)
-        log("[check digested]=" + str(digested) + "for data=" + str(data))
+        log("[check digested]=" + str(s) + "for data=" + str(data))
         return hashlib.md5(s).digest()
 
     def create_packet(self):
@@ -285,7 +285,7 @@ def read_input():
     log("hi")
     global all_data
     all_data = sys.stdin.read()
-    log("[all data] length=" + len(all_data))
+    log("[all data] length=" + str(len(all_data)))
     s.send()
 
 read_input()

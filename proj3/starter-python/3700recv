@@ -55,7 +55,7 @@ class Receiver(object):
         msg = struct.pack("!Ld", self.next_byte_expected, time)
         #msg = json.dumps({"ack": next_seq, "time": time}) #({"ack": decoded['sequence'] + len(decoded['data']) + 1})
         # format: ABOUT TO SEND <current sequence> + <data.length>
-        log("ABOUT TO SEND ACK" + self.next_byte_expected)
+        log("[ABOUT TO SEND ACK]" + self.next_byte_expected)
         if sock.sendto(msg, address) < len(msg):
             log("[error] unable to fully send packet")
     
@@ -63,7 +63,7 @@ class Receiver(object):
     def send_dack(self, time, address):
         msg= struct.pack("!Ld", self.next_byte_expected, time)
         #msg = json.dumps({"ack": seq + 1, "time": time})
-        log("ABOUT TO SEND DACK : expected seq: " + str(self.next_byte_expected))
+        log("[ABOUT TO SEND DACK : expected seq:=]" + str(self.next_byte_expected))
         if sock.sendto(msg, address) < len(msg):
             log("[error] unable to fully send packet")
 
@@ -93,10 +93,10 @@ class Receiver(object):
     ## data structure: (seq, ack, eof, time, hash, data)
     def process_data(self, packet, addr):
 
-        if (check_data(packet)):
+        if (self.check_data(packet)):
             # if it's in order
             if (packet["sequence_number"] == self.next_byte_expected): #(self.last_byte_rcv + 1 == seq):
-                log("[recv data] " + str(seq) + " (" + str(data) + ") ACCEPTED (in-order)")
+                log("[recv data] " + str(packet["sequence_number"]) + " (" + len(str(packet["data"])) + ") ACCEPTED (in-order)")
                 self.next_byte_expected = packet["sequence_number"] + len(packet["data"]) ## 
                 
                 #if (len(self.buffered_segments) < 0):
@@ -125,15 +125,17 @@ class Receiver(object):
 
 
 def decode(data):
-    unpack_format = "!LBBd32s" # time is a double    
+    unpack_format = "!LBd16s" # time is a double    
     head_size = struct.calcsize(unpack_format)
     header = data[:head_size]
     body = data[head_size:]
-    log("original data=" + data + " header size=" + str(head_size) + " header=" + header + " body=" + body)
+    log("[original data]=" + data + " header size=" + str(head_size) + " header=" + header + " body=" + body)
     unpacked = struct.unpack(unpack_format, header)
     log("[received unpacked data]=" + str(unpacked))
-    sequence_number, ack, eof, timestamp, data_check = unpacked
-    log("sequence_number=" + str(sequence_number) + " ack=" + str(ack) + " eof=" + str(eof) + " timestamp=" + str(timestamp) + " data_check=" + data_check)
+    sequence_number, flags, timestamp, data_check = unpacked
+    eof = flags >> 1       # unpacking
+    ack = flags & 1
+    log("[sequence_number]=" + str(sequence_number) + " ack=" + str(ack) + " eof=" + str(eof) + " timestamp=" + str(timestamp) + " data_check=" + data_check)
     data_segment = { "sequence_number": sequence_number, 
                     "ack": ack,
                     "eof": eof,
@@ -144,6 +146,7 @@ def decode(data):
     log("[data segment]=" + json.dumps(data_segment))
     return data_segment
 
+r = Receiver()
 # Now listen for packets
 while True:
     result = sock.recvfrom(MSG_SIZE)
@@ -169,7 +172,7 @@ while True:
             # If there is data, we accept it and print it out
             if (decoded["data"]):#(decoded['data']):
                 # If we receive data, we assume it's in-order
-                process_data(decoded, addr);
+                r.process_data(decoded, addr);
 
         except (ValueError, KeyError, TypeError) as e:
             log("[recv corrupt packet]")

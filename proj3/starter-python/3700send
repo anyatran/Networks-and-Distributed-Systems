@@ -108,7 +108,7 @@ class Sender(object):
     def data_check(self, data):
         check = hashlib.md5(data)
         log("[check hash object]=" + str(check))
-        digested = check.hexdigest()
+        digested = check.digest()
         log("[check digested]=" + str(digested) + "for data=" + str(data))
         return digested
 
@@ -116,8 +116,11 @@ class Sender(object):
     def create_packet(self):
         #len(hashcode) is = 32
         segment = all_data[self.last_byte_sent: self.last_byte_sent + MSS]
-        tcp_header = struct.pack("!LBBd32s", self.last_byte_sent, False, False, time.time(), self.data_check(segment))
-        log("last byte sent=" + str(self.last_byte_sent) + " ack=" + str(False) + " eof=" + str(False) + " time=" + str(time.time()) + " segment check=" + str(self.data_check(segment)))
+        eof = False
+        ack = False
+        flags = (eof << 1) + ack
+        tcp_header = struct.pack("!LBd16s", self.last_byte_sent, flags, time.time(), self.data_check(segment))
+        log("[last byte sent=" + str(self.last_byte_sent) + " ack=" + str(False) + " eof=" + str(False) + " time=" + str(time.time()) + " segment check=" + str(self.data_check(segment)))
         #log("last byte sent=" + str(type(self.last_byte_sent)) + " ack=" + str(type(False)) + " eof=" + str(type(False)) + " time=" + str(type(time.time())) + " segment check=" + str(type(self.data_check(segment))))
         log("tcp header=" + tcp_header)
         packet = tcp_header + segment

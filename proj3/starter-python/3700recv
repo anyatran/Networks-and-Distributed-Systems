@@ -44,7 +44,7 @@ class Receiver(object):
         self.last_byte_rcv = 0
         self.next_byte_expected = 0
         self.data_rcv = ""    
-        self.buffered_segments = []
+        self.buffered_segments = []     # should be sorted in increasing order by sequence number
 
     ## Check if this data came in order
     def in_order(self, packet):
@@ -125,7 +125,7 @@ class Receiver(object):
 
 
 def decode(data):
-    unpack_format = "!LBd16s" # time is a double    
+    unpack_format = "!LH16s" # time is a double    
     head_size = struct.calcsize(unpack_format)
     header = data[:head_size]
     body = data[head_size:]

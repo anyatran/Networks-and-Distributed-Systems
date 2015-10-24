@@ -50,7 +50,8 @@ class Sender(object):
         self.last_byte_acked = 0
         self.last_byte_sent_before_3dup_acks = -1
         self.sent_data = {} # entry = {<seq>: {sent: Boolean, timeout: int, sent_time: double}}
-        self.acked = {}
+        self.acked_data = {}  # {<seq> : Boolean}
+        self.RTT = 1.0 # one second
         '''
         The Slow-Start threshold is a dynamically-set value indicating
         an upper bound on the congestion window above which a
@@ -73,11 +74,7 @@ class Sender(object):
             ## nothing to send...
         #else:
         if (len(all_data) > 0):
-            ## there is something to send
 
-            ## do something here
-
-            ## and then Calculate the sending parameters:
             ## 1. How many segments are currently unacknowledged
             flight_size = self.last_byte_sent - self.last_byte_acked
             ## 2. How many segments can still be sent - usable window
@@ -100,33 +97,41 @@ class Sender(object):
                     if sock.sendto(packet, dest) < len(packet):
                         log("[error] unable to fully send packet")
                     else:
-                        self.sent_data[self.last_byte_sent] = {"sent": True, "timeout": 30, "sent_time": time.time()}
+                        log("[send data] " + str(self.last_byte_sent) + " (" + str(len(packet)) + ")")
+                        timeout = self.calc_timeout()
+                        self.sent_data[self.last_byte_sent] = {"sent": True, "timeout": timeout, "sent_time": time.time()}
                         self.acked[self.last_byte_sent] = False
                         self.last_byte_sent += MSS
-                        log("[last byte sent] " + str(self.last_byte_sent))
-                        log("[send data] " + str(self.last_byte_sent) + " (" + str(len(packet)) + ")")
-                        i = i + 1
-    
-    def data_check(self, data):
-        check = hashlib.md5(data)
-        log("[check hash object]=" + str(check))
-        digested = check.digest()
-        log("[check digested]=" + str(digested) + "for data=" + str(data))
-        return digested
+                        log("[last byte sent after sending packet]=" + str(self.last_byte_sent))
+                    i = i + 1
 
+    def calc_timeout(self):
+        if (self.last_byte_sent in self.sent_data):
+            old_timeout = self.RTT
+        else:
+            old_timeout = self.sent_data[self.last_byte_sent]["timeout"]
+        new_timeout = (1 - ALPHA) * old_timeout + ALPHA * self.RTT
+        log("[calculated_timeout]=" + str(new_timeout))
+        return new_timeout
+
+    def digest_data(self, data):
+        s = “”
+        for d in data: 
+            s += str(d)
+        log("[check digested]=" + str(digested) + "for data=" + str(data))
+        return hashlib.md5(s).digest()
 
     def create_packet(self):
-        #len(hashcode) is = 32
         segment = all_data[self.last_byte_sent: self.last_byte_sent + MSS]
         eof = False
-        #ack = False
+        ack = False
         flags = (eof << 1) + ack
-        tcp_header = struct.pack("!LBd16s", self.last_byte_sent, flags, time.time(), self.data_check(segment))
-        log("[last byte sent=" + str(self.last_byte_sent) + " ack=" + str(False) + " eof=" + str(False) + " time=" + str(time.time()) + " segment check=" + str(self.data_check(segment)))
-        #log("last byte sent=" + str(type(self.last_byte_sent)) + " ack=" + str(type(False)) + " eof=" + str(type(False)) + " time=" + str(type(time.time())) + " segment check=" + str(type(self.data_check(segment))))
-        log("tcp header=" + tcp_header)
-        packet = tcp_header + segment
-        return packet
+        digested = self.digest_data([self.last_byte_sent, flags, segment])
+        tcp_header = struct.pack("!LH16s", self.last_byte_sent, flags, digested)
+        log("[last byte sent]=" + str(self.last_byte_sent) + " ack=" + str(ack) + " eof=" + str(eof) + " segment check=" + str(digested) + " header_size=" + str(struct.calcsize("!LH16s")))
+        log("[tcp header]=" + tcp_header)
+        data_packet = tcp_header + segment
+        return data_packet
    
     def calc_cong_window_after_new_ask(self, sequence_number, last_acked):
 
@@ -147,20 +152,14 @@ class Sender(object):
             return self.cong_window + MSS;
 
     def process_new_ack(self, packet):
-
         # Update the Last-Byte-Acked param, but memorize the previous value
         last_byte_acked_previous = self.last_byte_acked;
         self.last_byte_acked = packet["sequence_number"] - 1;
-
-        # Update RTT here?
-
-
         # Update congestion window
         self.cong_window = self.calc_cong_window_after_new_ask(packet["sequence_number"], last_byte_acked_previous);
-
         # ? also reset the counter of duplicate ACKs.
         self.dup_ack_count = 0;
-
+        log("[processed new ack] last_byte_acked=" + str(self.last_byte_acked) + "congestion window=" + str(self.cong_window))
         ## To figure out next state:
         # if (self.cong_window < self.ssthresh):
             ## this is slow start
@@ -199,10 +198,12 @@ class Sender(object):
         ## We are not using receiver's advirtised window yet but we MIGHT
         # self.recv_window = packet["ack_w"]
 
+        self.RTT = time.time() - self.sent_data[packet["sequence_number"]]['sent_time']
+        self.acked_data[packet["sequence_number"]] = True
         ## Is this a newly acknowledged segment (i.e., not a duplicate ACK)?
-        if (packet["sequence_number"] > (self.last_byte_acked + 1)):
-            # Let the current state process a "new" acknowledgment
-            # currentState = currentState.handleNewACK(ack);
+        log("[got ack with sequence number]=" + str(packet["sequence_number"]))
+        log("[my last_byte_acked]=" + str(self.last_byte_acked))
+        if (packet["sequence_number"] > self.last_byte_acked):
 
             ## figure out current state and process new ack accordingly
             self.process_new_ack(packet)
@@ -249,14 +250,6 @@ class Sender(object):
 #   else:    # ack for old segment, ignored
 #     dupacks=0
 
-## Calculate checksum
-def digest_data(data):
-    m = hashlib.md5() 
-    m.update(data)
-    d = m.digest()
-    log("[digested] " + d)
-    return 
-
 # def send_next_packet(data):
 #     global SEQUENCE
 #     global lastByteSent
@@ -276,13 +269,23 @@ def digest_data(data):
 #           return True
 #     else:
 #           return False
+
+def decode(data):
+
+    unpack_format = "!LB" # time is a double    
+    unpacked = struct.unpack(unpack_format, data)
+    sequence_number, ack = unpacked    
+    data_segment = { "sequence_number": sequence_number, "ack": ack }
+    log("[data segment]=" + json.dumps(data_segment))
+    return data_segment
+
 s = Sender()
 
 def read_input():
     log("hi")
     global all_data
     all_data = sys.stdin.read()
-    log("[all data]" + all_data)
+    log("[all data] length=" + len(all_data))
     s.send()
 
 read_input()
@@ -295,7 +298,7 @@ while True:
     if result:
         (data, addr) = result
         try:
-            decoded = json.loads(data)
+            decoded = decode(data)
 
             ## We process only ACKs and ignore anything else
             # If there is an ack, send next packet

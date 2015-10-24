@@ -65,6 +65,15 @@ class Receiver(object):
     #     log("[ABOUT TO SEND DACK : expected seq:=]" + str(self.next_byte_expected))
     #     if sock.sendto(msg, address) < len(msg):
     #         log("[error] unable to fully send packet")
+    
+    # check if the sequence filled the gaps
+    def check_gaps(self, next_byte):
+        if next_byte in self.sack:
+            self.sack.remove(next_byte)
+            new_next_byte = next_byte + len(self.buffered_segments[next_byte]["data"])
+            return check_gaps(new_next_byte)
+        else:
+            return new_next_byte
 
     def digest_data(self, data):
         s = ""
@@ -100,14 +109,12 @@ class Receiver(object):
     def process_data(self, packet):
 
         if (self.check_data(packet)):
+            self.buffered_segments[packet["sequence_number"]]["data"] = packet["data"]
+            self.buffered_segments[packet["sequence_number"]]["buffered"] = True
             # if it's in order
             if (packet["sequence_number"] == self.next_byte_expected): #(self.last_byte_rcv + 1 == seq):
                 log("[recv data] " + str(packet["sequence_number"]) + " (" + len(str(packet["data"])) + ") ACCEPTED (in-order)")
-                self.buffered_segments[packet["sequence_number"]]["data"] = packet["data"]
-                self.buffered_segments[packet["sequence_number"]]["buffered"] = True
-                #if (len(self.sack) == 0):
-                self.next_byte_expected = packet["sequence_number"] + len(packet["data"]) ## 
-                    
+                self.next_byte_expected = self.check_gaps(packet["sequence_number"] + len(packet["data"])) 
                 #if (len(self.buffered_segments) < 0):
                     # No previously buffered segments.
                     #self.last_byte_rcv = segment["sequence_number"] + len(segment["data"]) - 1;
@@ -123,6 +130,8 @@ class Receiver(object):
                 self.send_ack()
             # if out of order - send DACKs
             else:
+                self.sack.append(packet["sequence_number"])
+                log("[recv data] " + str(packet["sequence_number"]) + " (" + len(str(packet["data"])) + ") ACCEPTED (OUT of order)")
                 self.send_ack()
                 #self.process_out_of_order_data_segment(packet)
                 # self.send_dack(self.last_byte_rcv, time, addr)

@@ -55,6 +55,7 @@ class Receiver(object):
     # send ACKs to sender
     def send_ack(self, sequence_number):
         msg = struct.pack("!LB", sequence_number, True)
+        log("[SENDING ACK] seq_n=" + str(sequence_number))
         if sock.sendto(msg, self.addr) < len(msg):
             log("[error] unable to fully send packet")
     

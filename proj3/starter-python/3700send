@@ -16,7 +16,7 @@ import hashlib
 import struct
 
 ## Maximum segment size, in bytes. Same for both sending/receiving endpoints.
-MSS = 1000
+MSS = 500
 all_data = ""
 
 TIMEOUT = 30
@@ -220,7 +220,7 @@ class Sender(object):
         else:
             ## figure out current state and process dup ack accordingly
             self.process_dup_ack(packet)
-        log("[recv ack] " + packet["sequence_number"])
+        log("[recv ack] " + str(packet["sequence_number"]))
 
         
 
@@ -301,20 +301,20 @@ while True:
 
     if result:
         (data, addr) = result
-        try:
-            decoded = decode(data)
+        #try:
+        decoded = decode(data)
 
             ## We process only ACKs and ignore anything else
             # If there is an ack, send next packet
-            if decoded['ack']: # == SEQUENCE:
-                s.process_ack(decoded)
+        if decoded['ack']: # == SEQUENCE:
+            s.process_ack(decoded)
        
                 # Try to send next packet; break if no more data
                 # if (not send_next_packet()):
                 #     break
-                s.send()
-        except (ValueError, KeyError, TypeError):
-            log("[recv corrupt packet]")
+            s.send()
+        #except (ValueError, KeyError, TypeError):
+         #   log("[recv corrupt packet]")
     else:
         log("[error] timeout")
         sys.exit(-1)

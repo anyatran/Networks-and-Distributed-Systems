@@ -75,7 +75,8 @@ class Receiver(object):
 
     def check_data(self, packet):
         flags = (packet["eof"] << 1) + packet["ack"]
-        recv_hash = digest_data([packet["sequence_number"], flags, packet["data"])
+        recv_hash = self.digest_data([packet["sequence_number"], flags, packet["data"]])
+        log("[check_data]=" + str(packet["checksum"] == recv_hash))
         return packet["checksum"] == recv_hash
 
     # def process_corrupted_data(self, packet):
@@ -102,7 +103,7 @@ class Receiver(object):
         if (self.check_data(packet)):
             # if it's in order
             if (packet["sequence_number"] == self.next_byte_expected): #(self.last_byte_rcv + 1 == seq):
-                log("[recv data] " + str(packet["sequence_number"]) + " (" + len(str(packet["data"])) + ") ACCEPTED (in-order)")
+                log("[recv data] " + str(packet["sequence_number"]) + " (" + str(len(packet["data"])) + ") ACCEPTED (in-order)")
                 self.buffered_segments[packet["sequence_number"]]["data"] = packet["data"]
                 self.buffered_segments[packet["sequence_number"]]["buffered"] = True
                 #if (len(self.sack) == 0):
@@ -135,25 +136,25 @@ class Receiver(object):
             # self.send_dack(self.last_byte_rcv, time, addr)
 
 
-def decode(data):
+def decode_data(data):
     unpack_format = "!LH16s" #sequence, flag, hash   
     head_size = struct.calcsize(unpack_format)
     header = data[:head_size]
     body = data[head_size:]
-    log("[original data]=" + data + " header size=" + str(head_size) + " header=" + header + " body=" + body)
+    log("[original data]=" + str(data) + " header size=" + str(head_size) + " header=" + str(header) + " body=" + str(body))
     unpacked = struct.unpack(unpack_format, header)
     log("[received unpacked data]=" + str(unpacked))
     sequence_number, flags, data_check = unpacked
     eof = flags >> 1       # unpacking
     ack = flags & 1
-    log("[sequence_number]=" + str(sequence_number) + " ack=" + str(ack) + " eof=" + str(eof)  + " data_check=" + data_check)
+    log("[sequence_number]=" + str(sequence_number) + " ack=" + str(ack) + " eof=" + str(eof)  + " data_check=" + str(data_check))
     data_segment = { "sequence_number": sequence_number, 
                     "ack": ack,
                     "eof": eof,
                     "checksum": data_check,
                     "data": body
                     }
-    log("[data segment]=" + json.dumps(data_segment))
+    # log("[data segment]=" + json.dumps(data_segment))
     return data_segment
 
 r = Receiver()
@@ -168,7 +169,7 @@ while True:
         (res, addr) = result
         r.addr = addr
 
-        decoded = decode(res)
+        decoded = decode_data(res)
         '''
         ** assume sender will send a hexdigested hash already instead of an entire obj
         '''
@@ -178,12 +179,13 @@ while True:
             # If the EOF flag is set, exit
             if (decoded["eof"]):#(decoded['eof']):
                 log("[completed]")
+                r.process_data(decoded)
                 sys.exit(0)
 
             # If there is data, we accept it and print it out
-            if (decoded["data"]):#(decoded['data']):
+            elif (decoded["data"]):#(decoded['data']):
                 # If we receive data, we assume it's in-order
-                r.process_data(decoded);
+                r.process_data(decoded)
 
         except (ValueError, KeyError, TypeError) as e:
             log("[recv corrupt packet]")

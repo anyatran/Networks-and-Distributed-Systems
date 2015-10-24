@@ -44,8 +44,8 @@ class Receiver(object):
         self.last_byte_rcv = 0
         self.next_byte_expected = 0
         self.data_rcv = ""    
-        self.buffered_segments = []
-
+        self.buffered_segments = {}
+        self.sack = []
     ## Check if this data came in order
     def in_order(self, packet):
         return True
@@ -97,8 +97,14 @@ class Receiver(object):
             # if it's in order
             if (packet["sequence_number"] == self.next_byte_expected): #(self.last_byte_rcv + 1 == seq):
                 log("[recv data] " + str(packet["sequence_number"]) + " (" + len(str(packet["data"])) + ") ACCEPTED (in-order)")
-                self.next_byte_expected = packet["sequence_number"] + len(packet["data"]) ## 
-                
+                self.buffered_segments[packet["sequence_number"]] = packet["data"]
+                if (len(self.sack) == 0):
+                    self.next_byte_expected = packet["sequence_number"] + len(packet["data"]) ## 
+                else:
+                    # if sack is not empty and the next expected one is in the sack
+                    if (packet["sequence_number"] + len(packet["data"])) in self.sack:
+                        self.s
+                    
                 #if (len(self.buffered_segments) < 0):
                     # No previously buffered segments.
                     #self.last_byte_rcv = segment["sequence_number"] + len(segment["data"]) - 1;
@@ -125,21 +131,20 @@ class Receiver(object):
 
 
 def decode(data):
-    unpack_format = "!LBd16s" # time is a double    
+    unpack_format = "!LH16s" #sequence, flag, hash   
     head_size = struct.calcsize(unpack_format)
     header = data[:head_size]
     body = data[head_size:]
     log("[original data]=" + data + " header size=" + str(head_size) + " header=" + header + " body=" + body)
     unpacked = struct.unpack(unpack_format, header)
     log("[received unpacked data]=" + str(unpacked))
-    sequence_number, flags, timestamp, data_check = unpacked
+    sequence_number, flags, data_check = unpacked
     eof = flags >> 1       # unpacking
     ack = flags & 1
-    log("[sequence_number]=" + str(sequence_number) + " ack=" + str(ack) + " eof=" + str(eof) + " timestamp=" + str(timestamp) + " data_check=" + data_check)
+    log("[sequence_number]=" + str(sequence_number) + " ack=" + str(ack) + " eof=" + str(eof)  + " data_check=" + data_check)
     data_segment = { "sequence_number": sequence_number, 
                     "ack": ack,
                     "eof": eof,
-                    "timestamp": timestamp,
                     "hash_check": data_check,
                     "data": body
                     }

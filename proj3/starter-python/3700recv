@@ -47,6 +47,7 @@ class Receiver(object):
         self.buffered_segments = {}  # {<seq_number>: {"data": String, "next_byte": int, "buffered": Boolean} }
         self.sack = []
         self.addr = 0
+        self.ordered_seq = []
     ## Check if this data came in order
     def in_order(self, packet):
         return True
@@ -68,11 +69,12 @@ class Receiver(object):
     # check if the sequence filled the gaps
     def check_gaps(self, next_byte):
         if next_byte in self.sack:
+            self.ordered_seq.append(next_byte)
             self.sack.remove(next_byte)
             new_next_byte = self.buffered_segments[next_byte]["next_byte"]
             return check_gaps(new_next_byte)
         else:
-            return new_next_byte
+            return next_byte
 
     def digest_data(self, data):
         s = ""
@@ -122,6 +124,7 @@ class Receiver(object):
                 #self.buffered_segments[packet["sequence_number"]]["buffered"] = True
                 #if (len(self.sack) == 0):
                 # self.next_byte_expected = packet["sequence_number"] + len(packet["data"]) ## 
+                self.ordered_seq.append(packet["sequence_number"])
                 self.next_byte_expected = self.check_gaps(self.buffered_segments[packet["sequence_number"]]["next_byte"]) 
                 #if (len(self.buffered_segments) < 0):
                     # No previously buffered segments.

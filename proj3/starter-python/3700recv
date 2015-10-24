@@ -52,7 +52,8 @@ class Receiver(object):
         return True
     
     # send ACKs to sender
-    def send_ack(self):
+    def send_ack(self, sequence_number):
+        msg = struct.pack("!LB", sequence_number, True)
         if sock.sendto(msg, self.addr) < len(msg):
             log("[error] unable to fully send packet")
     
@@ -134,18 +135,17 @@ class Receiver(object):
 
 
                 # ack = {adv_w: current_rcv_w, sequence_number: next_byte_expected, timestamp: segment["timestamp"]}
-                self.send_ack()
+                self.send_ack(packet["sequence_number"])
             # if out of order - send DACKs
             else:
                 self.sack.append(packet["sequence_number"])
                 log("[recv data] " + str(packet["sequence_number"]) + " (" + len(str(packet["data"])) + ") ACCEPTED (OUT of order)")
-                self.send_ack()
+                self.send_ack(self.next_byte_expected)
                 #self.process_out_of_order_data_segment(packet)
                 # self.send_dack(self.last_byte_rcv, time, addr)
     
-        # if the data is corrupted - send dack 
-        else:
-            self.send_ack()
+        # if the data is corrupted don't do anything
+        #else:
             # log("[CORRUPTED] " + str(seq))
             #self.process_currupted_data(packet)
             # self.send_dack(self.last_byte_rcv, time, addr)

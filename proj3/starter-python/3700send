@@ -49,7 +49,8 @@ class Sender(object):
         self.last_byte_sent = 0
         self.last_byte_acked = 0
         self.last_byte_sent_before_3dup_acks = -1
-
+        self.sent_data = {} # entry = {<seq>: {sent: Boolean, timeout: int, sent_time: double}}
+        self.acked = {}
         '''
         The Slow-Start threshold is a dynamically-set value indicating
         an upper bound on the congestion window above which a
@@ -57,7 +58,6 @@ class Sender(object):
         state. The default value is 65535 bytes (or 64 KBytes).
         '''
         self.ssthresh = 65535
-
 
         self.dup_ack_thresh = 3
         '''
@@ -100,6 +100,8 @@ class Sender(object):
                     if sock.sendto(packet, dest) < len(packet):
                         log("[error] unable to fully send packet")
                     else:
+                        self.sent_data[self.last_byte_sent] = {"sent": True, "timeout": 30, "sent_time": time.time()}
+                        self.acked[self.last_byte_sent] = False
                         self.last_byte_sent += MSS
                         log("[last byte sent] " + str(self.last_byte_sent))
                         log("[send data] " + str(self.last_byte_sent) + " (" + str(len(packet)) + ")")
@@ -117,7 +119,7 @@ class Sender(object):
         #len(hashcode) is = 32
         segment = all_data[self.last_byte_sent: self.last_byte_sent + MSS]
         eof = False
-        ack = False
+        #ack = False
         flags = (eof << 1) + ack
         tcp_header = struct.pack("!LBd16s", self.last_byte_sent, flags, time.time(), self.data_check(segment))
         log("[last byte sent=" + str(self.last_byte_sent) + " ack=" + str(False) + " eof=" + str(False) + " time=" + str(time.time()) + " segment check=" + str(self.data_check(segment)))

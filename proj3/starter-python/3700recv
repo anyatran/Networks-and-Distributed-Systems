@@ -44,7 +44,7 @@ class Receiver(object):
         self.last_byte_rcv = 0
         self.next_byte_expected = 0
         self.data_rcv = ""    
-        self.buffered_segments = {}  # {<seq_number>: {"data": String, "buffered": Boolean} }
+        self.buffered_segments = {}  # {<seq_number>: {"data": String, "next_byte": int, "buffered": Boolean} }
         self.sack = []
         self.addr = 0
     ## Check if this data came in order
@@ -53,8 +53,6 @@ class Receiver(object):
     
     # send ACKs to sender
     def send_ack(self):
-        msg = struct.pack("!LB", self.next_byte_expected, True)
-        log("[ABOUT TO SEND ACK]=" + str(self.next_byte_expected))
         if sock.sendto(msg, self.addr) < len(msg):
             log("[error] unable to fully send packet")
     
@@ -70,7 +68,7 @@ class Receiver(object):
     def check_gaps(self, next_byte):
         if next_byte in self.sack:
             self.sack.remove(next_byte)
-            new_next_byte = next_byte + len(self.buffered_segments[next_byte]["data"])
+            new_next_byte = self.buffered_segments[next_byte]["next_byte"]
             return check_gaps(new_next_byte)
         else:
             return new_next_byte
@@ -84,7 +82,7 @@ class Receiver(object):
 
     def check_data(self, packet):
         flags = (packet["eof"] << 1) + packet["ack"]
-        recv_hash = digest_data([packet["sequence_number"], flags, packet["data"])
+        recv_hash = digest_data(packet["sequence_number"], flags, packet["data"])
         return packet["checksum"] == recv_hash
 
     # def process_corrupted_data(self, packet):
@@ -110,11 +108,12 @@ class Receiver(object):
 
         if (self.check_data(packet)):
             self.buffered_segments[packet["sequence_number"]]["data"] = packet["data"]
+            self.buffered_segments[packet["sequence_number"]]["next_byte"] = packet["sequence_number"] + len(packet["data"])
             self.buffered_segments[packet["sequence_number"]]["buffered"] = True
             # if it's in order
             if (packet["sequence_number"] == self.next_byte_expected): #(self.last_byte_rcv + 1 == seq):
                 log("[recv data] " + str(packet["sequence_number"]) + " (" + len(str(packet["data"])) + ") ACCEPTED (in-order)")
-                self.next_byte_expected = self.check_gaps(packet["sequence_number"] + len(packet["data"])) 
+                self.next_byte_expected = self.check_gaps(self.buffered_segments[packet["sequence_number"]]["next_byte"]) 
                 #if (len(self.buffered_segments) < 0):
                     # No previously buffered segments.
                     #self.last_byte_rcv = segment["sequence_number"] + len(segment["data"]) - 1;

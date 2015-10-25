@@ -87,6 +87,7 @@ class Receiver(object):
                 
                     while ((self.next_byte_expected in self.buffered_segments) and (self.buffered_segments[self.next_byte_expected]["buffered"])):
                         self.data += self.buffered_segments[self.next_byte_expected]["data"]
+                        sys.stdout.write(self.buffered_segments[self.next_byte_expected]["data"])
                         self.next_byte_expected += 1
 
 

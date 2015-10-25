@@ -83,3 +83,79 @@ receiver:
 
 		ack = {adv_w: rcv_window, sequence_number: next_byte_expected, timestamp: -1} # -1 or what?
 
+
+
+        
+
+
+#calculates estimated timeout time based on RTTs
+#Inputs: SampleRTT, old estimatedRTT, alpha
+# def estimate_timeout(timestamp, old_rtt):
+#     sample_rtt = time.time() - timestamp #current_time - timestamp
+#     estimated_rtt = (1 - ALPHA) * old_rtt * (0.875 * ALPHA)
+#     return estimated_rtt
+
+## calculates congestion window
+## call it when NEW ack was received
+# def calc_congestion_window_after_new_ack():
+    # global CONGESTION_WIN
+
+    # if (CONGESTION_WIN < SSTHRESH):
+    #     #slow start
+    #     CONGESTION_WIN = CONGESTION_WIN + 1 ##?????????? or cwnd = cwnd + MSS
+    # ## congestion avoidance
+    # else:
+    #     CONGESTION_WIN = CONGESTION_WIN + (1/CONGESTION_WIN) ##?????????? or cwnd = cwnd+ mss*(mss/cwnd)
+
+## if duplicate or old ack:
+# if tcp.ack==snd.una:    # duplicate acknowledgement
+#     dupacks++
+#     if dupacks==3:
+#       retransmitsegment(snd.una)
+#       ssthresh=max(cwnd/2,2*MSS)
+#       cwnd=ssthresh
+#   else:    # ack for old segment, ignored
+#     dupacks=0
+
+# def send_next_packet(data):
+#     global SEQUENCE
+#     global lastByteSent
+
+#     if (len(data) > 0):
+#               ## binary encode
+#           msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False}) #, "digested": digest_data(data)})
+#           SEQUENCE += len(data)
+#           log("[sequence n] " + str(SEQUENCE))
+
+#           if sock.sendto(msg, dest) < len(msg):
+#           log("[error] unable to fully send packet")
+#           else:
+#               lastByteSent += len(data)
+#               log("[last byte sent] " + str(lastByteSent))
+#           log("[send data] " + str(SEQUENCE) + " (" + str(len(data)) + ")")
+#           return True
+#     else:
+#           return False
+
+
+
+
+
+
+
+    # def process_corrupted_data(self, packet):
+    #     log("[CORRUPTED] " + str(packet["sequence_number"]))
+    #     self.send_dack(self.next_byte_expected, packet["timestamp"])
+        
+    # def process_out_of_order_data_segment(packet):
+    #     log("[OUT OF ORDER] " + str(packet["sequence_number"]))
+    #     self.send_dack(packet["timestamp"])
+        #self.buffered_segments.add(packet)
+
+        # Also, we CANNOT assume that all currently buffered segments
+        # have sequence number lower than the one that just arrived.
+        #self.last_byte_rcv = max(self.last_byte_rcv, packet["sequence_number"] + len(packet["data"]) - 1)
+
+        # should we reduce our window?? even though we are not using it yet.. 
+        # self.rcv_window = self.max_rcv_window - (self.last_byte_rcv - self.next_byte_expected)
+        #ack = {"adv_w": self.rcv_window, "sequence_number": self.next_byte_expected, timestamp: -1} # -1 or what?

@@ -158,13 +158,15 @@ class Sender(object):
         last_byte_acked_previous = self.last_byte_acked;
         self.last_byte_acked = packet["sequence_number"];
         # Update congestion window
-        self.cong_window = self.calc_cong_window_after_new_ask(packet["sequence_number"], last_byte_acked_previous);
+        self.calc_cong_window_after_new_ask(packet["sequence_number"], last_byte_acked_previous);
         # ? also reset the counter of duplicate ACKs.
         self.dup_ack_count = 0;
         log("[processed new ack] last_byte_acked=" + str(self.last_byte_acked) + "congestion window=" + str(self.cong_window))
 
-        while self.acked_data[self.last_byte_sent]:
-            self.last_byte_sent += MSS
+        acked = True
+        while acked:
+            if ((self.last_byte_sent in self.acked_data) and (self.acked_data[self.last_byte_sent])):
+                self.last_byte_sent += MSS
         ## To figure out next state:
         # if (self.cong_window < self.ssthresh):
             ## this is slow start

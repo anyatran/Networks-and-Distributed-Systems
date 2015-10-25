@@ -114,6 +114,7 @@ class Sender(object):
 
     def retransmit_packet(self, seqnum):
         if not self.acked_data[seqnum]:
+            log("[retransmiting packet]=" + str(seqnum))
             self.transmit_packet(seqnum)
 
     def transmit_packet(self, seqnum):
@@ -149,7 +150,7 @@ class Sender(object):
             if not self.sent_data[segment]['sent']:
                 self.transmit_packet(segment)
 
-    def ack(self, data):
+    def process_ack(self, data):
         self.RTT = (time.time() - self.sent_data[data["sequence_number"]]['sent_time'])
         log("[RTT]=" + str(self.RTT))
         self.acked_data[data["sequence_number"]] = True
@@ -164,7 +165,7 @@ class Sender(object):
             if not self.finished_transmitting:
                 self.send_untransmitted()
 
-    def sendall(self):
+    def send(self):
         self.finished_transmitting = False
         self.segments_number = len(self.data) / DATA_LENGTH
 
@@ -189,7 +190,7 @@ class Sender(object):
                 #try:
                 decoded = decode(data)
                 if decoded['ack']:
-                    s.ack(decoded)
+                    s.process_ack(decoded)
                 #except (ValueError, KeyError, TypeError):
                  #   log("[recv corrupt packet]")
             else:
@@ -220,7 +221,7 @@ s = Sender()
 def read_input():
     s.data = sys.stdin.read()
     log("[all data] length=" + str(len(s.data)))
-    s.sendall()
+    s.send()
 
 read_input()
 

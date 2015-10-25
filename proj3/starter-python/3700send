@@ -17,8 +17,8 @@ import struct
 from threading import Timer, Thread, Lock
 
 ## Maximum segment size, in bytes. Same for both sending/receiving endpoints.
-MSS = 522
-DATA_LENGTH = 500
+MSS = 1500
+DATA_LENGTH = 1478
 
 TIMEOUT = 30
 
@@ -151,7 +151,7 @@ class Sender(object):
 
     def ack(self, data):
         self.RTT = (time.time() - self.sent_data[data["sequence_number"]]['sent_time'])
-        log("[RTT]=" + self.RTT)
+        log("[RTT]=" + str(self.RTT))
         self.acked_data[data["sequence_number"]] = True
         self.calc_cong_window_after_new_ack()
         if data["sequence_number"] == self.last_byte_sent:

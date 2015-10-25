@@ -15,7 +15,7 @@ import struct
 
 MSG_SIZE = 1500
 TIMEOUT = 30
-MSS = 500
+MSS = 1478
 SEQUENCE = 0
 ADV_W = 1
 

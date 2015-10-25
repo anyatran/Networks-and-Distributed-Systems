@@ -15,7 +15,7 @@ import struct
 
 MSG_SIZE = 1500
 TIMEOUT = 30
-
+MSS = 500
 SEQUENCE = 0
 ADV_W = 1
 
@@ -41,9 +41,9 @@ log("[bound] " + str(UDP_PORT))
 class Receiver(object):
     
     def __init__(self):
+        self.data = ""
         self.last_byte_rcv = 0
         self.next_byte_expected = 0
-        self.data_rcv = ""    
         self.buffered_segments = {}  # {<seq_number>: {"data": String, "next_byte": int, "buffered": Boolean} }
         self.sack = []
         self.addr = 0
@@ -90,23 +90,6 @@ class Receiver(object):
         log("[check_data]=" + str(packet["checksum"] == recv_hash))
         return packet["checksum"] == recv_hash
 
-    # def process_corrupted_data(self, packet):
-    #     log("[CORRUPTED] " + str(packet["sequence_number"]))
-    #     self.send_dack(self.next_byte_expected, packet["timestamp"])
-        
-    # def process_out_of_order_data_segment(packet):
-    #     log("[OUT OF ORDER] " + str(packet["sequence_number"]))
-    #     self.send_dack(packet["timestamp"])
-        #self.buffered_segments.add(packet)
-
-        # Also, we CANNOT assume that all currently buffered segments
-        # have sequence number lower than the one that just arrived.
-        #self.last_byte_rcv = max(self.last_byte_rcv, packet["sequence_number"] + len(packet["data"]) - 1)
-
-        # should we reduce our window?? even though we are not using it yet.. 
-        # self.rcv_window = self.max_rcv_window - (self.last_byte_rcv - self.next_byte_expected)
-        #ack = {"adv_w": self.rcv_window, "sequence_number": self.next_byte_expected, timestamp: -1} # -1 or what?
-
     ## Process this data
     ## data structure: (seq, ack, eof, time, hash, data)
     def process_data(self, packet):
@@ -126,7 +109,11 @@ class Receiver(object):
                 #if (len(self.sack) == 0):
                 # self.next_byte_expected = packet["sequence_number"] + len(packet["data"]) ## 
                 self.ordered_seq.append(packet["sequence_number"])
-                self.next_byte_expected = self.check_gaps(self.buffered_segments[packet["sequence_number"]]["next_byte"]) 
+
+                while self.buffered_segments[self.next_byte_expected]["buffered"]:
+                    self.data += self.buffered_segments[self.next_byte_expected]["data"]
+                    self.next_byte_expected += MSS
+                #self.next_byte_expected = self.check_gaps(self.buffered_segments[packet["sequence_number"]]["next_byte"]) 
                 #if (len(self.buffered_segments) < 0):
                     # No previously buffered segments.
                     #self.last_byte_rcv = segment["sequence_number"] + len(segment["data"]) - 1;

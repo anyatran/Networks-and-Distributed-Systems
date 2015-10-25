@@ -44,13 +44,10 @@ class Receiver(object):
         self.data = ""
         self.last_byte_rcv = 0
         self.next_byte_expected = 0
-        self.buffered_segments = {}  # {<seq_number>: {"data": String, "next_byte": int, "buffered": Boolean} }
+        self.buffered_segments = {}  # {<seq_number>: {"data": String, "buffered": Boolean} }
         self.sack = []
         self.addr = 0
         self.ordered_seq = []
-    ## Check if this data came in order
-    def in_order(self, packet):
-        return True
     
     # send ACKs to sender
     def send_ack(self, sequence_number):
@@ -58,24 +55,6 @@ class Receiver(object):
         log("[SENDING ACK] seq_n=" + str(sequence_number))
         if sock.sendto(msg, self.addr) < len(msg):
             log("[error] unable to fully send packet")
-    
-    # send Duplicate ACKs
-    # def send_dack(self, time, address):
-    #     msg= struct.pack("!Ld", self.next_byte_expected, time)
-    #     #msg = json.dumps({"ack": seq + 1, "time": time})
-    #     log("[ABOUT TO SEND DACK : expected seq:=]" + str(self.next_byte_expected))
-    #     if sock.sendto(msg, address) < len(msg):
-    #         log("[error] unable to fully send packet")
-    
-    # check if the sequence filled the gaps
-    def check_gaps(self, next_byte):
-        if next_byte in self.sack:
-            self.ordered_seq.append(next_byte)
-            self.sack.remove(next_byte)
-            new_next_byte = self.buffered_segments[next_byte]["next_byte"]
-            return check_gaps(new_next_byte)
-        else:
-            return next_byte
 
     def digest_data(self, data):
         s = ""
@@ -102,47 +81,13 @@ class Receiver(object):
 
             if not self.buffered_segments[packet["sequence_number"]]["buffered"]:
                 self.buffered_segments[packet["sequence_number"]]["data"] = packet["data"]
-                #self.buffered_segments[packet["sequence_number"]]["next_byte"] = packet["sequence_number"] + len(packet["data"])
                 self.buffered_segments[packet["sequence_number"]]["buffered"] = True
-            # if it's in order
                 if (packet["sequence_number"] == self.next_byte_expected): #(self.last_byte_rcv + 1 == seq):
                     log("[recv data] " + str(packet["sequence_number"]) + " (" + str(len(packet["data"])) + ") ACCEPTED (in-order)")
-                    #self.buffered_segments[packet["sequence_number"]]["data"] = packet["data"]
-                    #self.buffered_segments[packet["sequence_number"]]["buffered"] = True
-                    #if (len(self.sack) == 0):
-                    # self.next_byte_expected = packet["sequence_number"] + len(packet["data"]) ## 
-                    #self.ordered_seq.append(packet["sequence_number"])
-
+                
                     while ((self.next_byte_expected in self.buffered_segments) and (self.buffered_segments[self.next_byte_expected]["buffered"])):
                         self.data += self.buffered_segments[self.next_byte_expected]["data"]
                         self.next_byte_expected += 1
-
-                #self.next_byte_expected = self.check_gaps(self.buffered_segments[packet["sequence_number"]]["next_byte"]) 
-                #if (len(self.buffered_segments) < 0):
-                    # No previously buffered segments.
-                    #self.last_byte_rcv = segment["sequence_number"] + len(segment["data"]) - 1;
-                #else:
-                    # Some segments were previously buffered.
-                    # Checked whether this segment filled any gaps for
-                    # the possible buffered segments.  If yes,
-                    # this will update "last_byte_recv"
-                    #self.check_buffered()
-
-
-                # ack = {adv_w: current_rcv_w, sequence_number: next_byte_expected, timestamp: segment["timestamp"]}
-            # if out of order - send DACKs
-            # else:
-            #     self.sack.append(packet["sequence_number"])
-            #     log("[recv data] " + str(packet["sequence_number"]) + " (" + str(len(packet["data"])) + ") ACCEPTED (OUT of order)")
-            #     self.send_ack(self.next_byte_expected)
-                #self.process_out_of_order_data_segment(packet)
-                # self.send_dack(self.last_byte_rcv, time, addr)
-    
-        # if the data is corrupted don't do anything
-        #else:
-            # log("[CORRUPTED] " + str(seq))
-            #self.process_currupted_data(packet)
-            # self.send_dack(self.last_byte_rcv, time, addr)
 
 
 def decode_data(data):
@@ -179,16 +124,14 @@ while True:
         r.addr = addr
 
         decoded = decode_data(res)
-        '''
-        ** assume sender will send a hexdigested hash already instead of an entire obj
-        '''
+
        # try:
             #decoded = json.loads(data)
             #print decoded
             # If the EOF flag is set, exit
         if (decoded["eof"]):#(decoded['eof']):
             log("[completed]")
-            #r.process_data(decoded)
+            r.process_data(decoded)
             sys.exit(0)
 
             # If there is data, we accept it and print it out

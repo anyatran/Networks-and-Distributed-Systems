@@ -242,3 +242,103 @@ receiver:
     #     else:
     #         ## figure out current state and process dup ack accordingly
     #         self.process_dup_ack(packet)
+
+
+
+
+
+
+            ## initial slow start:
+        #if (self.last_byte_sent_before_3dup_acks == -1):
+            ## here check if there is any bytes of data that were not acked
+            #if (self.last_byte_acked < self.last_byte_sent):
+                ## calculate RTO here?
+            #else:
+                ## eveyrthing is acked, we are not waiting for any data to be acked!
+            #return self.cong_window + (sequence_number - last_acked - 1)
+        #else:
+            # This is a slow start recovering after a segment loss
+            # and before the sender has acknowledged all the segments
+            # that were outstanding at the time 3x dupACKs were received,
+            # the sender counts cumulative ACKs as worth only a single MSS.
+            #return self.cong_window + MSS;
+
+    # def process_new_ack(self, packet):
+    #     # Update the Last-Byte-Acked param, but memorize the previous value
+    #     last_byte_acked_previous = self.last_byte_acked;
+    #     self.last_byte_acked = packet["sequence_number"];
+    #     # Update congestion window
+    #     self.calc_cong_window_after_new_ask(packet["sequence_number"], last_byte_acked_previous);
+    #     # ? also reset the counter of duplicate ACKs.
+    #     self.dup_ack_count = 0;
+    #     log("[processed new ack] last_byte_acked=" + str(self.last_byte_acked) + "congestion window=" + str(self.cong_window))
+
+    #     acked = True
+    #     while acked:
+    #         if ((self.last_byte_sent in self.acked_data) and (self.acked_data[self.last_byte_sent])):
+    #             self.last_byte_sent += MSS
+    #         else:
+    #             acked = False
+        ## To figure out next state:
+        # if (self.cong_window < self.ssthresh):
+            ## this is slow start
+        # else:
+            ## congestion avoidance
+
+
+
+
+
+
+
+                #self.next_byte_expected = self.check_gaps(self.buffered_segments[packet["sequence_number"]]["next_byte"]) 
+                #if (len(self.buffered_segments) < 0):
+                    # No previously buffered segments.
+                    #self.last_byte_rcv = segment["sequence_number"] + len(segment["data"]) - 1;
+                #else:
+                    # Some segments were previously buffered.
+                    # Checked whether this segment filled any gaps for
+                    # the possible buffered segments.  If yes,
+                    # this will update "last_byte_recv"
+                    #self.check_buffered()
+
+
+                # ack = {adv_w: current_rcv_w, sequence_number: next_byte_expected, timestamp: segment["timestamp"]}
+            # if out of order - send DACKs
+            # else:
+            #     self.sack.append(packet["sequence_number"])
+            #     log("[recv data] " + str(packet["sequence_number"]) + " (" + str(len(packet["data"])) + ") ACCEPTED (OUT of order)")
+            #     self.send_ack(self.next_byte_expected)
+                #self.process_out_of_order_data_segment(packet)
+                # self.send_dack(self.last_byte_rcv, time, addr)
+    
+        # if the data is corrupted don't do anything
+        #else:
+            # log("[CORRUPTED] " + str(seq))
+            #self.process_currupted_data(packet)
+            # self.send_dack(self.last_byte_rcv, time, addr)
+
+
+
+
+
+
+
+
+                # send Duplicate ACKs
+    # def send_dack(self, time, address):
+    #     msg= struct.pack("!Ld", self.next_byte_expected, time)
+    #     #msg = json.dumps({"ack": seq + 1, "time": time})
+    #     log("[ABOUT TO SEND DACK : expected seq:=]" + str(self.next_byte_expected))
+    #     if sock.sendto(msg, address) < len(msg):
+    #         log("[error] unable to fully send packet")
+    
+    # check if the sequence filled the gaps
+    def check_gaps(self, next_byte):
+        if next_byte in self.sack:
+            self.ordered_seq.append(next_byte)
+            self.sack.remove(next_byte)
+            new_next_byte = self.buffered_segments[next_byte]["next_byte"]
+            return check_gaps(new_next_byte)
+        else:
+            return next_byte

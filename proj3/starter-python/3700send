@@ -148,8 +148,7 @@ class Sender(object):
         sock.sendto(oldest_not_acked_segment, dest)
 
     def transmit_packet(self, seqnum):
-        # set all tcp header and data values
-        pos = seqnum
+        pos = (seqnum - self.first_byte)
         pos_bytes = pos * DATA_LENGTH
         data = self.data[pos_bytes : pos_bytes + DATA_LENGTH]
 
@@ -157,22 +156,19 @@ class Sender(object):
         eof = False if pos != self.segments_number - 1 else True
         ack = False
         flags = (eof << 1) + ack
-        digested = self.digest_data([self.last_byte_sent, flags, data])
-        tcp_header = struct.pack("!LH16s", self.last_byte_sent, flags, digested)
+        digested = self.digest_data([pos, flags, data])
+        tcp_header = struct.pack("!LH16s", pos, flags, digested)
         #log("[last byte sent]=" + str(self.last_byte_sent) + " ack=" + str(ack) + " eof=" + str(eof) + " segment check=" + str(digested) + " header_size=" + str(struct.calcsize("!LH16s")))
         #log("[tcp header]=" + tcp_header)
         packet = tcp_header + data
 
-        # send binary data across the wire
         sock.sendto(packet, dest)
-        # mark packet as having been transmitted
         p = self.sent_data[seqnum]
         p['sent'] = True
         p['sent_time'] = time.time()
         # calculate and set new timeout
         p['timeout'] = self.calc_timeout(p['timeout'])
         log("[send data] " + str(pos) + " (" + str(len(packet)) + ")")
-        # start timeout timer for retransmitting packet
         #Timer(p['timeout'], self.retransmit_packet, [seqnum]).start()
 
     def get_window(self):

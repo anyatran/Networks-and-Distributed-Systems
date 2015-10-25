@@ -191,7 +191,7 @@ while True:
             # If the EOF flag is set, exit
         if (decoded["eof"]):#(decoded['eof']):
             log("[completed]")
-            r.process_data(decoded)
+            #r.process_data(decoded)
             sys.exit(0)
 
             # If there is data, we accept it and print it out

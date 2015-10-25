@@ -87,7 +87,7 @@ class Sender(object):
    
     def calc_cong_window_after_new_ask(self):
         if (self.cong_window < self.ssthresh):
-            self.cong_window += 1
+            self.cong_window = 2 * self.cong_window
             log("[slow start] congestion window=" + str(self.cong_window))
         else:
             self.cong_window += 1

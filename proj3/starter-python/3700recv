@@ -95,28 +95,31 @@ class Receiver(object):
     def process_data(self, packet):
 
         if (self.check_data(packet)):
+            self.send_ack(packet["sequence_number"])
+
             if (packet["sequence_number"] not in self.buffered_segments):
                 self.buffered_segments[packet["sequence_number"]] = {"data": "", "next_byte": 0, "buffered": False}
 
-            self.buffered_segments[packet["sequence_number"]]["data"] = packet["data"]
-            self.buffered_segments[packet["sequence_number"]]["next_byte"] = packet["sequence_number"] + len(packet["data"])
-            self.buffered_segments[packet["sequence_number"]]["buffered"] = True
+            if not self.buffered_segments[packet["sequence_number"]]["buffered"]:
+                self.buffered_segments[packet["sequence_number"]]["data"] = packet["data"]
+                #self.buffered_segments[packet["sequence_number"]]["next_byte"] = packet["sequence_number"] + len(packet["data"])
+                self.buffered_segments[packet["sequence_number"]]["buffered"] = True
             # if it's in order
-            if (packet["sequence_number"] == self.next_byte_expected): #(self.last_byte_rcv + 1 == seq):
-                log("[recv data] " + str(packet["sequence_number"]) + " (" + str(len(packet["data"])) + ") ACCEPTED (in-order)")
-                #self.buffered_segments[packet["sequence_number"]]["data"] = packet["data"]
-                #self.buffered_segments[packet["sequence_number"]]["buffered"] = True
-                #if (len(self.sack) == 0):
-                # self.next_byte_expected = packet["sequence_number"] + len(packet["data"]) ## 
-                self.ordered_seq.append(packet["sequence_number"])
+                if (packet["sequence_number"] == self.next_byte_expected): #(self.last_byte_rcv + 1 == seq):
+                    log("[recv data] " + str(packet["sequence_number"]) + " (" + str(len(packet["data"])) + ") ACCEPTED (in-order)")
+                    #self.buffered_segments[packet["sequence_number"]]["data"] = packet["data"]
+                    #self.buffered_segments[packet["sequence_number"]]["buffered"] = True
+                    #if (len(self.sack) == 0):
+                    # self.next_byte_expected = packet["sequence_number"] + len(packet["data"]) ## 
+                    #self.ordered_seq.append(packet["sequence_number"])
 
-                buff = self.buffered_segments[self.next_byte_expected]["buffered"]
-                while buff:
-                    if ((self.next_byte_expected in self.buffered_segments) and (self.buffered_segments[self.next_byte_expected]["buffered"])):
-                        self.data += self.buffered_segments[self.next_byte_expected]["data"]
-                        self.next_byte_expected += MSS
-                    else:
-                        buff = False
+                    buff = True
+                    while buff:
+                        if ((self.next_byte_expected in self.buffered_segments) and (self.buffered_segments[self.next_byte_expected]["buffered"])):
+                            self.data += self.buffered_segments[self.next_byte_expected]["data"]
+                            self.next_byte_expected += 1
+                        else:
+                            buff = False
                 #self.next_byte_expected = self.check_gaps(self.buffered_segments[packet["sequence_number"]]["next_byte"]) 
                 #if (len(self.buffered_segments) < 0):
                     # No previously buffered segments.
@@ -130,12 +133,11 @@ class Receiver(object):
 
 
                 # ack = {adv_w: current_rcv_w, sequence_number: next_byte_expected, timestamp: segment["timestamp"]}
-                self.send_ack(packet["sequence_number"])
             # if out of order - send DACKs
-            else:
-                self.sack.append(packet["sequence_number"])
-                log("[recv data] " + str(packet["sequence_number"]) + " (" + str(len(packet["data"])) + ") ACCEPTED (OUT of order)")
-                self.send_ack(self.next_byte_expected)
+            # else:
+            #     self.sack.append(packet["sequence_number"])
+            #     log("[recv data] " + str(packet["sequence_number"]) + " (" + str(len(packet["data"])) + ") ACCEPTED (OUT of order)")
+            #     self.send_ack(self.next_byte_expected)
                 #self.process_out_of_order_data_segment(packet)
                 # self.send_dack(self.last_byte_rcv, time, addr)
     

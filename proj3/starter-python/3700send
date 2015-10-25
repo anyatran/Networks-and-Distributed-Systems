@@ -132,12 +132,13 @@ class Sender(object):
         data_packet = tcp_header + segment
         return data_packet
    
-    def calc_cong_window_after_new_ask(self, sequence_number, last_acked):
+    def calc_cong_window_after_new_ask(self):
         if (self.cong_window < self.ssthresh):
-            self.cong_window += MSS
+            self.cong_window += 1
             log("[slow start] congestion window=" + str(self.cong_window))
         else:
-            self.cong_window = self.cong_window + self.cong_window / MSS
+            self.cong_window += 1
+            #self.cong_window = self.cong_window + self.cong_window / MSS
             log("[congestion avoidance] congestion window=" + str(self.cong_window))
         ## initial slow start:
         #if (self.last_byte_sent_before_3dup_acks == -1):
@@ -219,9 +220,8 @@ class Sender(object):
 
     def transmit_packet(self, seqnum):
         # set all tcp header and data values
-        # pos = (seqnum-self.first_byte)
-        # pos_bytes = pos*SEGMENT_DATA_SIZE
-        pos_bytes = seqnum
+        pos = (seqnum - self.first_byte)
+        pos_bytes = pos * DATA_LENGTH
         data = self.data[pos_bytes : pos_bytes + DATA_LENGTH]
 
         #segment = s.data[self.last_byte_sent: self.last_byte_sent + MSS]
@@ -255,8 +255,8 @@ class Sender(object):
         # make sure upper doesn't exceed the last base sequence number
         if upper > self.last_byte:
             upper =  self.last_byte
-        log("[window range]=" + str(range(lower, upper, DATA_LENGTH)))
-        return range(lower, upper, DATA_LENGTH)
+        log("[window range]=" + str(range(lower, upper)))
+        return range(lower, upper)
 
 
     def send_untransmitted(self):
@@ -266,6 +266,7 @@ class Sender(object):
 
     def ack(self, data):
         self.acked_data[data["sequence_number"]] = True
+        self.calc_cong_window_after_new_ask()
         if data["sequence_number"] == self.last_byte_sent:
             #move base until next un-acked packet'''
             while self.acked_data[self.last_byte_sent]:
@@ -278,14 +279,14 @@ class Sender(object):
                 self.send_untransmitted()
 
     def sendall(self):
-
+        self.finished_transmitting = False
         self.segments_number = len(self.data) / DATA_LENGTH
 
         if len(self.data) % DATA_LENGTH: 
             self.segments_number += 1
 
         self.first_byte = self.last_byte_sent
-        self.last_byte = self.last_byte_sent + self.segments_number * DATA_LENGTH
+        self.last_byte = self.last_byte_sent + self.segments_number
 
         self.populate_sent_data()
         self.populate_acked_data()
@@ -324,12 +325,12 @@ class Sender(object):
             #     self.ack(acknum)
 
     def populate_sent_data(self):
-        for x in range(self.first_byte, self.last_byte, DATA_LENGTH):
+        for x in range(self.first_byte, self.last_byte):
             self.sent_data[x] = {"sent": False, "timeout": 1.0}
         log("[populated data]" + json.dumps(self.sent_data))
 
     def populate_acked_data(self):
-        for x in range(self.first_byte, self.last_byte, DATA_LENGTH):
+        for x in range(self.first_byte, self.last_byte):
             self.acked_data[x] = False
         log("[populated acked]" + json.dumps(self.acked_data))
 
@@ -347,7 +348,6 @@ s = Sender()
 
 def read_input():
     s.data = sys.stdin.read()
-    s.finished_transmitting = False
     log("[all data] length=" + str(len(s.data)))
     s.sendall()
 

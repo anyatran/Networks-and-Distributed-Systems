@@ -113,13 +113,10 @@ class Receiver(object):
                     # self.next_byte_expected = packet["sequence_number"] + len(packet["data"]) ## 
                     #self.ordered_seq.append(packet["sequence_number"])
 
-                    buff = True
-                    while buff:
-                        if ((self.next_byte_expected in self.buffered_segments) and (self.buffered_segments[self.next_byte_expected]["buffered"])):
-                            self.data += self.buffered_segments[self.next_byte_expected]["data"]
-                            self.next_byte_expected += 1
-                        else:
-                            buff = False
+                    while ((self.next_byte_expected in self.buffered_segments) and (self.buffered_segments[self.next_byte_expected]["buffered"])):
+                        self.data += self.buffered_segments[self.next_byte_expected]["data"]
+                        self.next_byte_expected += 1
+
                 #self.next_byte_expected = self.check_gaps(self.buffered_segments[packet["sequence_number"]]["next_byte"]) 
                 #if (len(self.buffered_segments) < 0):
                     # No previously buffered segments.

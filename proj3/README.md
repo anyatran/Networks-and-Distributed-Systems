@@ -214,3 +214,31 @@ receiver:
         #log("[tcp header]=" + tcp_header)
         data_packet = tcp_header + segment
         return data_packet
+
+
+
+
+
+
+            # def process_dup_ack(self, packet):
+    #     self.dup_ack_count = self.dup_ack_count + 1
+    #     if (self.dup_ack_count >= 3):
+    #         self.fast_retransmit(packet)
+
+    # def process_ack(self, packet):
+    #     log("[recv ack] " + str(packet["sequence_number"]))
+    #     self.RTT = time.time() - self.sent_data[packet["sequence_number"]]['sent_time']
+    #     self.acked_data[packet["sequence_number"]] = True
+    #     #self.last_byte_acked = packet["sequence_number"]
+    #     log("[got ack with sequence number]=" + str(packet["sequence_number"]))
+    #     log("[my last_byte_acked]=" + str(self.last_byte_acked))
+    #     if (packet["sequence_number"] == self.last_byte_acked):
+    #         ## figure out current state and process new ack accordingly
+    #         self.process_new_ack(packet)
+    #         # If all outstanding data at 3 dupACKs have been acked, reset the indicator parameter.
+    #         if (self.last_byte_sent_before_3dup_acks <= self.last_byte_acked):
+    #             self.last_byte_sent_before_3dup_acks = -1          
+    #     ## If duplicate ack
+    #     else:
+    #         ## figure out current state and process dup ack accordingly
+    #         self.process_dup_ack(packet)

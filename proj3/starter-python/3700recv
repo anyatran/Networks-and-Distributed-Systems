@@ -134,7 +134,7 @@ class Receiver(object):
             # if out of order - send DACKs
             else:
                 self.sack.append(packet["sequence_number"])
-                log("[recv data] " + str(packet["sequence_number"]) + " (" + len(str(packet["data"])) + ") ACCEPTED (OUT of order)")
+                log("[recv data] " + str(packet["sequence_number"]) + " (" + str(len(packet["data"])) + ") ACCEPTED (OUT of order)")
                 self.send_ack(self.next_byte_expected)
                 #self.process_out_of_order_data_segment(packet)
                 # self.send_dack(self.last_byte_rcv, time, addr)

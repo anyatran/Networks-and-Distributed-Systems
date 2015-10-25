@@ -17,7 +17,8 @@ import struct
 from threading import Timer, Thread, Lock
 
 ## Maximum segment size, in bytes. Same for both sending/receiving endpoints.
-MSS = 500
+MSS = 522
+DATA_LENGTH = 500
 
 TIMEOUT = 30
 
@@ -213,6 +214,121 @@ class Sender(object):
         else:
             ## figure out current state and process dup ack accordingly
             self.process_dup_ack(packet)
+
+    def transmit_packet(self, seqnum):
+        # set all tcp header and data values
+        # pos = (seqnum-self.first_byte)
+        # pos_bytes = pos*SEGMENT_DATA_SIZE
+        pos_bytes = seqnum
+        data = self.data[pos_bytes : pos_bytes + DATA_LENGTH]
+
+        #segment = s.data[self.last_byte_sent: self.last_byte_sent + MSS]
+        if (((self.last_byte_sent + MSS) / MSS) >= ((len(s.data)) / MSS)):
+            log("[SENDING LAST PIECE]")
+            eof = True
+        else:
+            eof = False
+        ack = False
+        flags = (eof << 1) + ack
+        digested = self.digest_data([self.last_byte_sent, flags, segment])
+        tcp_header = struct.pack("!LH16s", self.last_byte_sent, flags, digested)
+        #log("[last byte sent]=" + str(self.last_byte_sent) + " ack=" + str(ack) + " eof=" + str(eof) + " segment check=" + str(digested) + " header_size=" + str(struct.calcsize("!LH16s")))
+        #log("[tcp header]=" + tcp_header)
+        packet = tcp_header + segment
+
+        # send binary data across the wire
+        sock.sendto(packet, dest)
+        # mark packet as having been transmitted
+        p = self.sent_data[seqnum]
+        p['sent'] = True
+        p['sent_time'] = datetime.now()
+        # calculate and set new timeout
+        p['timeout'] = self.calc_timeout(p['timeout'])
+        # start timeout timer for retransmitting packet
+        #Timer(p['timeout'], self.retransmit_packet, [seqnum]).start()
+
+    def get_window(self):
+        lower = self.last_byte_sent
+        upper = self.last_byte_sent + self.cong_window
+        # make sure upper doesn't exceed the last base sequence number
+        if upper > self.last_byte:
+            upper =  self.last_byte
+        log("[window range]=" + str(range(lower, upper, DATA_LENGTH)))
+        return range(lower, upper, DATA_LENGTH)
+
+
+    def send_untransmitted(self):
+        for p in self.get_window():
+            if not self.sent_data[p]['sent']:
+                self.transmit_packet(p)
+
+    def ack(self, data):
+        self.acked_data[data["sequence_number"]] = True
+        if data["sequence_number"] == self.last_byte_sent:
+            #move base until next un-acked packet'''
+            while self.acked_data[self.last_byte_sent]:
+                # if all packets have been acked, marked transmission as finished
+                if self.last_byte_sent == self.last_byte - DATA_LENGTH:
+                    self.finished_transmitting = True
+                self.last_byte_sent += DATA_LENGTH
+            # if transmission isn't finished, retransmit packets
+            if not self.finished_transmitting:
+                self.send_untransmitted()
+
+    def sendall(self):
+
+        self.segments_number = len(self.data) / DATA_LENGTH
+
+        if len(self.data) % DATA_LENGTH: 
+            self.segments_number += 1
+
+        self.first_byte = self.last_byte_sent
+        self.last_byte = self.last_byte_sent + self.segments_number * DATA_LENGTH
+
+        self.populate_sent_data()
+        self.populate_acked_data()
+
+        self.send_untransmitted()
+
+        # start looking for incoming acks
+        while not self.finished_transmitting:
+            # receive data struct and unpack into variables
+            result = sock.recvfrom(MSS)
+
+            if result:
+                (data, addr) = result
+                #try:
+                decoded = decode(data)
+                if decoded['ack']:
+                    s.ack(decoded)
+                #except (ValueError, KeyError, TypeError):
+                 #   log("[recv corrupt packet]")
+            else:
+                log("[error] timeout")
+                sys.exit(-1)
+
+            # src, dst, seqnum, acknum, headlen, checksum, fin, eof, unused, data = \
+            #     self.segment.unpack(ack_data)
+            # # make sure packet is an ack
+            # if acknum >= 0:
+            #     # update round trip time
+            #     self.rtt = (datetime.now() - self.transmitted[acknum]['time']).total_seconds()
+            #     # log received ack
+            #     self.logger.log(
+            #         'source: {0}, destination: {1}, seqnum: {2}, acknum: {3}, eof: {4}, rtt: {5}'.format(
+            #         src, dst, seqnum, acknum, eof, self.rtt)
+            #     )
+            #     # mark packet as acked
+            #     self.ack(acknum)
+
+    def populate_sent_data(self):
+        for x in range(self.first_byte, self.last_byte, DATA_LENGTH):
+            self.sent_data[x] = {"sent": False, "timeout": 1.0}
+
+    def populate_acked_data(self):
+        for x in range(self.first_byte, self.last_byte, DATA_LENGTH):
+            self.acked[x] = False
+
         
 
 def decode(data):
@@ -229,28 +345,28 @@ def read_input():
     s.data = sys.stdin.read()
     s.finished_transmitting = False
     log("[all data] length=" + str(len(s.data)))
-    s.send()
+    s.sendall()
 
 read_input()
 
 # Now read in data, send packets
-while True:
-    log("ABOUT TO SLEEP")
-    result = sock.recvfrom(MSS)
+# while True:
+#     log("ABOUT TO SLEEP")
+#     result = sock.recvfrom(MSS)
 
-    if result:
-        (data, addr) = result
-        #try:
-        decoded = decode(data)
-        if decoded['ack']:
-            s.process_ack(decoded)
-            if not self.finished_transmitting:
-                s.send()
-        #except (ValueError, KeyError, TypeError):
-         #   log("[recv corrupt packet]")
-    else:
-        log("[error] timeout")
-        sys.exit(-1)
+#     if result:
+#         (data, addr) = result
+#         #try:
+#         decoded = decode(data)
+#         if decoded['ack']:
+#             s.process_ack(decoded)
+#             if not self.finished_transmitting:
+#                 s.send()
+#         #except (ValueError, KeyError, TypeError):
+#          #   log("[recv corrupt packet]")
+#     else:
+#         log("[error] timeout")
+#         sys.exit(-1)
 
 #sock.sendto(json.dumps({"src": 1, "dest": 2, "eof": True, "data": "", "sequence": SEQUENCE, "ack": False}), dest)
 sys.exit(0)

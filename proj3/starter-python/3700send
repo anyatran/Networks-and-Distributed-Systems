@@ -95,7 +95,7 @@ class Sender(object):
                         timeout = self.calc_timeout()
                         self.sent_data[self.last_byte_sent] = {"sent": True, "timeout": timeout, "sent_time": time.time()}
                         self.acked_data[self.last_byte_sent] = False
-                        Timer(timeout, self.fast_retransmit, [self.last_byte_sent]).start()
+                        #Timer(timeout, self.fast_retransmit, [self.last_byte_sent]).start()
                         #self.last_byte_sent += MSS
                         #log("[last byte sent after sending packet]=" + str(self.last_byte_sent))
                     i = i + 1
@@ -168,6 +168,8 @@ class Sender(object):
         while acked:
             if ((self.last_byte_sent in self.acked_data) and (self.acked_data[self.last_byte_sent])):
                 self.last_byte_sent += MSS
+            else:
+                acked = False
         ## To figure out next state:
         # if (self.cong_window < self.ssthresh):
             ## this is slow start
@@ -350,6 +352,7 @@ def read_input():
 read_input()
 
 # Now read in data, send packets
+
 # while True:
 #     log("ABOUT TO SLEEP")
 #     result = sock.recvfrom(MSS)

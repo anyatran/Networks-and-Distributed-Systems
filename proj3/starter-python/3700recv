@@ -60,7 +60,7 @@ class Receiver(object):
         s = ""
         for d in data: 
             s += str(d)
-        log("[check digested]=" + str(s) + "for data=" + str(data))
+        #log("[check digested]=" + str(s) + "for data=" + str(data))
         return hashlib.md5(s).digest()
 
     def check_data(self, packet):
@@ -95,9 +95,9 @@ def decode_data(data):
     head_size = struct.calcsize(unpack_format)
     header = data[:head_size]
     body = data[head_size:]
-    log("[original data]=" + str(data) + " header size=" + str(head_size) + " header=" + str(header) + " body=" + str(body))
+    #log("[original data]=" + str(data) + " header size=" + str(head_size) + " header=" + str(header) + " body=" + str(body))
     unpacked = struct.unpack(unpack_format, header)
-    log("[received unpacked data]=" + str(unpacked))
+    #log("[received unpacked data]=" + str(unpacked))
     sequence_number, flags, data_check = unpacked
     eof = flags >> 1       # unpacking
     ack = flags & 1

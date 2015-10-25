@@ -159,3 +159,58 @@ receiver:
         # should we reduce our window?? even though we are not using it yet.. 
         # self.rcv_window = self.max_rcv_window - (self.last_byte_rcv - self.next_byte_expected)
         #ack = {"adv_w": self.rcv_window, "sequence_number": self.next_byte_expected, timestamp: -1} # -1 or what?
+
+
+
+
+
+
+
+     def send(self):
+        if (len(s.data) > 0):
+            ## 1. How many segments are currently unacknowledged
+            flight_size = self.last_byte_sent - self.last_byte_acked
+            ## 2. How many segments can still be sent - usable window
+            effective_window = self.cong_window - flight_size ### or min(self.cong_window, self.recv_window)
+            if (effective_window < 0):
+                effective_window = 0
+            log("[congestion window]=" + str(self.cong_window) + " [recv_window]=" + str(self.recv_window) + "[effective window]=" + str(effective_window) + "[flight size]=" + str(flight_size))
+            burst_size = effective_window / MSS ##, ##remaining data - len(data[lastByteSent:])? / MSS);
+            log("[burst size]=" + str(burst_size))
+            if (burst_size > 0): 
+                ## Send the "burstSize" worth of segments:
+                i = 0
+                while (i < burst_size) :
+                    ##Extract one segment of data
+                    packet = self.create_packet() 
+                    #log("[created this packet]=" + str(packet))
+
+                    if sock.sendto(packet, dest) < len(packet):
+                        log("[error] unable to fully send packet")
+                    else:
+                        log("[send data] " + str(self.last_byte_sent) + " (" + str(len(packet)) + ")")
+                        timeout = self.calc_timeout()
+                        self.sent_data[self.last_byte_sent] = {"sent": True, "timeout": timeout, "sent_time": time.time()}
+                        self.acked_data[self.last_byte_sent] = False
+                        #Timer(timeout, self.fast_retransmit, [self.last_byte_sent]).start()
+                        #self.last_byte_sent += MSS
+                        #log("[last byte sent after sending packet]=" + str(self.last_byte_sent))
+                    i = i + 1
+
+
+
+        def create_packet(self):
+        segment = s.data[self.last_byte_sent: self.last_byte_sent + MSS]
+        if (((self.last_byte_sent + MSS) / MSS) >= ((len(s.data)) / MSS)):
+            log("[SENDING LAST PIECE]")
+            eof = True
+        else:
+            eof = False
+        ack = False
+        flags = (eof << 1) + ack
+        digested = self.digest_data([self.last_byte_sent, flags, segment])
+        tcp_header = struct.pack("!LH16s", self.last_byte_sent, flags, digested)
+        #log("[last byte sent]=" + str(self.last_byte_sent) + " ack=" + str(ack) + " eof=" + str(eof) + " segment check=" + str(digested) + " header_size=" + str(struct.calcsize("!LH16s")))
+        #log("[tcp header]=" + tcp_header)
+        data_packet = tcp_header + segment
+        return data_packet

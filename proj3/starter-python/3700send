@@ -75,7 +75,7 @@ class Sender(object):
         else:
             old_timeout = self.RTT
         new_timeout = (1 - ALPHA) * t + ALPHA * self.RTT
-        #log("[calculated_timeout]=" + str(new_timeout))
+        log("[calculated_timeout]=" + str(new_timeout))
         return new_timeout
 
     def digest_data(self, data):
@@ -112,6 +112,10 @@ class Sender(object):
         oldest_not_acked_segment = '123'
         sock.sendto(oldest_not_acked_segment, dest)
 
+    def retransmit_packet(self, seqnum):
+        if not self.acked_data[seqnum]:
+            self.transmit_packet(seqnum)
+
     def transmit_packet(self, seqnum):
         seq_num = (seqnum - self.first_byte)
         bytes = seq_num * DATA_LENGTH
@@ -130,7 +134,7 @@ class Sender(object):
         p['sent_time'] = time.time()
         p['timeout'] = self.calc_timeout(p['timeout'])
         log("[send data] " + str(seq_num) + " (" + str(len(packet)) + ")")
-        #Timer(p['timeout'], self.retransmit_packet, [seqnum]).start()
+        Timer(p['timeout'], self.retransmit_packet, [seqnum]).start()
 
     def effective_window(self):
         start = self.last_byte_sent
@@ -146,6 +150,8 @@ class Sender(object):
                 self.transmit_packet(segment)
 
     def ack(self, data):
+        self.RTT = (time.time() - self.sent_data[data["sequence_number"]]['sent_time'])
+        log("[RTT]=" + self.RTT)
         self.acked_data[data["sequence_number"]] = True
         self.calc_cong_window_after_new_ack()
         if data["sequence_number"] == self.last_byte_sent:

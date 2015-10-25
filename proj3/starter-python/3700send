@@ -14,10 +14,10 @@ import select
 import json
 import hashlib
 import struct
-import Timer
+from threading import Timer, Thread, Lock
 
 ## Maximum segment size, in bytes. Same for both sending/receiving endpoints.
-MSS = 478
+MSS = 500
 
 TIMEOUT = 30
 
@@ -46,8 +46,8 @@ class Sender(object):
         self.cong_window = MSS
         '''Last advertised size of the currently available space in the receiver's buffer.'''
         self.recv_window = 65536
-        self.last_byte_sent = -1
-        self.last_byte_acked = -1
+        self.last_byte_sent = 0
+        self.last_byte_acked = 0
         self.last_byte_sent_before_3dup_acks = -1
         self.sent_data = {} # entry = {<seq>: {sent: Boolean, timeout: int, sent_time: double}}
         self.acked_data = {}  # {<seq> : Boolean}

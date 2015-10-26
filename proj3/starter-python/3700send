@@ -17,8 +17,8 @@ import struct
 from threading import Timer, Thread, Lock
 
 ## Maximum segment size, in bytes. Same for both sending/receiving endpoints.
-MSS = 1500
-DATA_LENGTH = 1478
+MSS = 1500 
+DATA_LENGTH = MSS - 22 
 
 TIMEOUT = 30
 
@@ -67,7 +67,7 @@ class Sender(object):
         If the counter reaches three (3) or more dup-ACKs, the sender assumes
         that the oldest unacknowledged segment is lost and needs to be retransmitted. */
         '''
-        self.dup_ack_count = 0
+        self.dups_ack_count = {}
 
     def calc_timeout(self, t):
         if (self.last_byte_sent in self.sent_data):
@@ -88,11 +88,11 @@ class Sender(object):
     def calc_cong_window_after_new_ack(self):
         if (self.cong_window < self.ssthresh):
             self.cong_window = 2 * self.cong_window
-            log("[slow start] congestion window=" + str(self.cong_window))
+            log("[slow start] congestion window=" + str(self.cong_window) + " ssthresh= " + str(self.ssthresh))
         else:
             self.cong_window += 1
             #self.cong_window = self.cong_window + self.cong_window / MSS
-            log("[congestion avoidance] congestion window=" + str(self.cong_window))
+            log("[congestion avoidance] congestion window=" + str(self.cong_window) + " ssthresh= " + str(self.ssthresh))
 
 
     def fast_retransmit(self, packet):
@@ -155,15 +155,28 @@ class Sender(object):
         log("[RTT]=" + str(self.RTT))
         self.acked_data[data["sequence_number"]] = True
         self.calc_cong_window_after_new_ack()
+        if data["sequence_number"] > data["next_byte_expected"]: # something is missing
+            if data["next_byte_expected"] in self.dups_ack_count:
+                if self.dups_ack_count[data["next_byte_expected"]] == 2: # this is going to be the third dup ack
+                    self.retransmit_packet(data["next_byte_expected"])
+                    del self.dups_ack_count[data["next_byte_expected"]]
+                else:
+                    self.dups_ack_count[data["next_byte_expected"]] += 1
+            else:
+                self.dups_ack_count[data["next_byte_expected"]] = 1
+
         if data["sequence_number"] == self.last_byte_sent:
             log("[acked last byte sent]" + str(data["sequence_number"]))
-            while ((self.last_byte_sent in self.acked_data) and (self.acked_data[self.last_byte_sent])):
-                if self.last_byte_sent == self.last_byte - 1:
-                    log("[finished transmitting]")
-                    self.finished_transmitting = True
-                self.last_byte_sent += 1
-            if not self.finished_transmitting:
-                self.send_untransmitted()
+            if(data["next_byte_expected"] == -1):
+                self.finished_transmitting = True
+            else: 
+                while ((self.last_byte_sent in self.acked_data) and (self.acked_data[self.last_byte_sent])):
+                    if self.last_byte_sent == self.last_byte - 1:
+                        log("[finished transmitting]")
+                        self.finished_transmitting = True
+                    self.last_byte_sent += 1
+                if not self.finished_transmitting:
+                    self.send_untransmitted()
 
     def send(self):
         self.finished_transmitting = False
@@ -209,10 +222,10 @@ class Sender(object):
 
         
 def decode(data):
-    unpack_format = "!LB"  
+    unpack_format = "!LlB"  
     unpacked = struct.unpack(unpack_format, data)
-    sequence_number, ack = unpacked    
-    data_segment = { "sequence_number": sequence_number, "ack": ack }
+    sequence_number, next_byte_expected, ack = unpacked    
+    data_segment = { "sequence_number": sequence_number, "next_byte_expected": next_byte_expected, "ack": ack }
     log("[data segment]=" + json.dumps(data_segment))
     return data_segment
 

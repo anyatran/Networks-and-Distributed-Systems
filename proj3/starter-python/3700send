@@ -53,13 +53,15 @@ class Sender(object):
         self.sent_data = {} # entry = {<seq>: {sent: Boolean, timeout: int, sent_time: double}}
         self.acked_data = {}  # {<seq> : Boolean}
         self.RTT = 1.0 # one second
+
+        self.retransmitted = []
         '''
         The Slow-Start threshold is a dynamically-set value indicating
         an upper bound on the congestion window above which a
         TCP sender transitions from Slow-Start to the Congestion Avoidance
         state. The default value is 65535 bytes (or 64 KBytes).
         '''
-        self.ssthresh = 65535
+        self.ssthresh = 100
 
         self.dup_ack_thresh = 3
         '''
@@ -95,26 +97,21 @@ class Sender(object):
             log("[congestion avoidance] congestion window=" + str(self.cong_window) + " ssthresh= " + str(self.ssthresh))
 
 
-    def fast_retransmit(self, packet):
-        log("[fast retransmit] how did we get here????????")
-        if (self.last_byte_sent_before_3dup_acks < 0):
-            self.last_byte_sent_before_3dup_acks = self.last_byte_sent
+    def fast_retransmit(self, seqnum):
 
-        flight_size = self.last_byte_sent - self.last_byte_acked;
+        #flight_size = self.last_byte_sent - self.last_byte_acked;
         ##??? check this
-        self.ssthresh = flight_size / 2;
-        self.ssthresh -= (self.ssthresh % MSS);
-        self.ssthresh = max(self.ssthresh, 2 * MSS);
+        self.cong_window = self.ssthresh / 2
 
-        self.cong_window = max(flight_size / 2, 2 * MSS) + 3 * MSS;
+        self.transmit_packet(seqnum)
 
-        ## ?? how to do this
-        oldest_not_acked_segment = '123'
-        sock.sendto(oldest_not_acked_segment, dest)
 
     def retransmit_packet(self, seqnum):
         if not self.acked_data[seqnum]:
             log("[retransmiting packet]=" + str(seqnum))
+            self.retransmitted.append(seqnum)
+            self.ssthresh = self.cong_window / 2
+            self.cong_window = 1
             self.transmit_packet(seqnum)
 
     def transmit_packet(self, seqnum):
@@ -153,7 +150,7 @@ class Sender(object):
     def dups_ack(self, data):
         if data["next_byte_expected"] in self.dups_ack_count:
             if self.dups_ack_count[data["next_byte_expected"]] == 2: # this is going to be the third dup ack
-                self.retransmit_packet(data["next_byte_expected"])
+                self.fast_retransmit(data["next_byte_expected"])
                 del self.dups_ack_count[data["next_byte_expected"]]
             else:
                 self.dups_ack_count[data["next_byte_expected"]] += 1
@@ -162,9 +159,11 @@ class Sender(object):
 
  
     def process_ack(self, data):
-        rtt_estimate = time.time() - self.sent_data[data["sequence_number"]]['sent_time']
-        self.RTT = ALPHA * rtt_estimate + (1 – ALPHA) * (self.RTT)
+        if not data["sequence_number"] in self.retransmitted:
+            rtt_estimate = time.time() - self.sent_data[data["sequence_number"]]['sent_time']
+            self.RTT = ALPHA * rtt_estimate + (1 - ALPHA) * (self.RTT)
         log("[RTT]=" + str(self.RTT))
+        #self.last_byte_acked = data["sequence_number"]
         self.acked_data[data["sequence_number"]] = True
         self.calc_cong_window_after_new_ack()
         if data["sequence_number"] > data["next_byte_expected"]: # something is missing

@@ -15,7 +15,7 @@ import struct
 
 MSG_SIZE = 1500 
 TIMEOUT = 30
-MSS = MSG_SIZE - 22
+MSS = MSG_SIZE - 20 
 SEQUENCE = 0
 ADV_W = 1
 
@@ -51,7 +51,7 @@ class Receiver(object):
     
     # send ACKs to sender
     def send_ack(self, sequence_number):
-        msg = struct.pack("!LlB", sequence_number, self.next_byte_expected, True)
+        msg = struct.pack("!HlB", sequence_number, self.next_byte_expected, True)
         log("[SENDING ACK] seq_n=" + str(sequence_number) + "expeceted: " + str(self.next_byte_expected))
         if sock.sendto(msg, self.addr) < len(msg):
             log("[error] unable to fully send packet")
@@ -69,6 +69,13 @@ class Receiver(object):
         log("[check_data]=" + str(packet["checksum"] == recv_hash))
         return packet["checksum"] == recv_hash
 
+    def done(self, packet):
+        log("[completed]" + str(packet["eof"]))
+        log("[COMPLETE TEXT]" + self.data)
+        self.next_byte_expected = -1
+        self.send_ack(packet["sequence_number"])
+        sys.exit(0)
+
     ## Process this data
     ## data structure: (seq, ack, eof, time, hash, data)
     def process_data(self, packet):
@@ -83,34 +90,26 @@ class Receiver(object):
             if not self.buffered_segments[packet["sequence_number"]]["buffered"]:
                 self.buffered_segments[packet["sequence_number"]]["data"] = packet["data"]
                 self.buffered_segments[packet["sequence_number"]]["buffered"] = True
-                if (packet["eof"]):
-                    self.buffered_segments[packet["sequence_number"]]["eof"] = True
+                self.buffered_segments[packet["sequence_number"]]["eof"] = packet["eof"] 
                 
                 if (packet["sequence_number"] == self.next_byte_expected): #(self.last_byte_rcv + 1 == seq):
                     log("[recv data] " + str(packet["sequence_number"]) + " (" + str(len(packet["data"])) + ") ACCEPTED (in-order)")
                     if (self.buffered_segments[self.next_byte_expected]["eof"]):
                         self.data += self.buffered_segments[self.next_byte_expected]["data"]
                         sys.stdout.write(self.buffered_segments[self.next_byte_expected]["data"])
-                        self.next_byte_exptected = -1
-                        log("[received last package]" + str(decoded["eof"]))
-                        log("[COMPLETE TEXT]" + self.data)
-                        self.send_ack(packet["sequence_number"])
-                        sys.exit(0)    
-                    while ((self.next_byte_expected in self.buffered_segments) and (self.buffered_segments[self.next_byte_expected]["buffered"])):
-                        self.data += self.buffered_segments[self.next_byte_expected]["data"]
-                        sys.stdout.write(self.buffered_segments[self.next_byte_expected]["data"])
-                        if self.buffered_segments[self.next_byte_expected]["eof"]:
-                            log("[completed]" + str(decoded["eof"]))
-                            log("[COMPLETE TEXT]" + self.data)
-                            self.next_byte_expected = -1
-                            self.send_ack(packet["sequence_number"])
-                            sys.exit(0)
-                        else:
-                            self.next_byte_expected += 1
+                        self.done(packet)
+                    else:
+                        while ((self.next_byte_expected in self.buffered_segments) and (self.buffered_segments[self.next_byte_expected]["buffered"])):
+                            self.data += self.buffered_segments[self.next_byte_expected]["data"]
+                            sys.stdout.write(self.buffered_segments[self.next_byte_expected]["data"])
+                            if self.buffered_segments[self.next_byte_expected]["eof"]:
+                                self.done(packet)
+                            else:
+                                self.next_byte_expected += 1
             self.send_ack(packet["sequence_number"])
 
 def decode_data(data):
-    unpack_format = "!LH16s" #sequence, flag, hash   
+    unpack_format = "!HH16s" #sequence, flag, hash   
     head_size = struct.calcsize(unpack_format)
     header = data[:head_size]
     body = data[head_size:]

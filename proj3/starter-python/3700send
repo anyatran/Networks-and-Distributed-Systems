@@ -62,7 +62,7 @@ class Sender(object):
         TCP sender transitions from Slow-Start to the Congestion Avoidance
         state. The default value is 65535 bytes (or 64 KBytes).
         '''
-        self.ssthresh = 100
+        self.ssthresh = 300
 
         self.dup_ack_thresh = 3
         '''
@@ -88,16 +88,20 @@ class Sender(object):
             #self.cong_window = self.cong_window + self.cong_window / MSS
             log("[congestion avoidance] congestion window=" + str(self.cong_window) + " ssthresh= " + str(self.ssthresh))
 
-    def calc_cong_window_on_expired_timeout(self):
+    def calc_cong_window_on_expired_timeout(self, seqnum):
         # flightSize = self.last_byte_sent - self.last_byte_acked
         # ssthresh = flightSize / 2
         # self.ssthresh = max(ssthresh, 2)
-        self.ssthresh = self.ssthresh / 2
+        self.ssthresh = self.cong_window / 2
         self.cong_window = 1
+        if seqnum in self.dups_ack_count:
+            self.dups_ack_count[seqnum] = 0
         ## reset dup acks counts
 
-    def calc_cong_window_after_3_dup_acks(self):
+    def calc_cong_window_after_3_dup_acks(self, seqnum):
         self.cong_window = self.ssthresh / 2
+        self.dups_ack_count[seqnum] = 0
+        #self.ssthresh = self.cong_window / 2
 
     def retransmit_packet(self, seqnum):
         if not self.acked_data[seqnum]:
@@ -105,11 +109,11 @@ class Sender(object):
             self.transmit_packet(seqnum)
 
     def on_expired_timeout(self, seqnum):
-        self.calc_cong_window_on_expired_timeout()
+        self.calc_cong_window_on_expired_timeout(seqnum)
         self.retransmit_packet(seqnum)
 
     def on_3_dup_ackes(self, seqnum):
-        self.calc_cong_window_after_3_dup_acks()
+        self.calc_cong_window_after_3_dup_acks(seqnum)
         self.retransmit_packet(seqnum)
 
     def transmit_packet(self, seqnum):
@@ -167,13 +171,13 @@ class Sender(object):
         if (data["sequence_number"] in self.timers):
             t = self.timers[data["sequence_number"]]
             t.cancel()
-        self.calc_cong_window_after_new_ack()
+       # self.calc_cong_window_after_new_ack()
         if data["sequence_number"] > data["next_byte_expected"]: # something is missing
             self.process_dup_ack(data)
 
         if data["sequence_number"] == self.last_byte_sent:
             log("[acked last byte sent]" + str(data["sequence_number"]))
-
+            self.calc_cong_window_after_new_ack()
             if(data["next_byte_expected"] == -1):
                 self.finished_transmitting = True
             else: 

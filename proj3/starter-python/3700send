@@ -55,7 +55,7 @@ class Sender(object):
         self.RTT = 1.0 # one second
 
         self.retransmitted = []
-        self.timers = []
+        self.timers = {}
         '''
         The Slow-Start threshold is a dynamically-set value indicating
         an upper bound on the congestion window above which a
@@ -133,7 +133,7 @@ class Sender(object):
         p['sent_time'] = time.time()
         p['timeout'] = self.calc_timeout()
         log("[send data] " + str(seq_num) + " (" + str(len(packet)) + ")")
-        t = Timer(p['timeout'], self.retransmit_packet])
+        t = Timer(p['timeout'], self.retransmit_packet, [seqnum])
         self.timers[seq_num] = t
         t.start()
 
@@ -168,15 +168,16 @@ class Sender(object):
         log("[RTT]=" + str(self.RTT))
         #self.last_byte_acked = data["sequence_number"]
         self.acked_data[data["sequence_number"]] = True
+        if (data["sequence_number"] in self.timers):
+            t = self.timers[data["sequence_number"]]
+            t.cancel()
         self.calc_cong_window_after_new_ack()
         if data["sequence_number"] > data["next_byte_expected"]: # something is missing
             self.dups_ack(data)
 
         if data["sequence_number"] == self.last_byte_sent:
             log("[acked last byte sent]" + str(data["sequence_number"]))
-            if (data["sequence_number"] in self.timers):
-                t = self.timers[data["sequence_number"]]
-                t.cancel()
+
             if(data["next_byte_expected"] == -1):
                 self.finished_transmitting = True
             else: 

@@ -52,7 +52,7 @@ class Sender(object):
         self.last_byte_sent_before_3dup_acks = -1
         self.sent_data = {} # entry = {<seq>: {sent: Boolean, timeout: int, sent_time: double}}
         self.acked_data = {}  # {<seq> : Boolean}
-        self.RTT = 1.0 # one second
+        self.RTT = 0.5 # one second
 
         self.retransmitted = []
         self.timers = {}
@@ -223,7 +223,7 @@ class Sender(object):
 
     def populate_sent_data(self):
         for x in range(self.first_byte, self.last_byte):
-            self.sent_data[x] = {"sent": False, "timeout": 1.0}
+            self.sent_data[x] = {"sent": False, "timeout": 0.5}
 
     def populate_acked_data(self):
         for x in range(self.first_byte, self.last_byte):

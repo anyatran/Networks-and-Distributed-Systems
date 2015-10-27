@@ -110,9 +110,9 @@ class Sender(object):
     def retransmit_packet(self, seqnum):
         if not self.acked_data[seqnum]:
             log("[retransmiting packet]=" + str(seqnum))
-            self.retransmitted.append(seqnum)
-            self.ssthresh = self.cong_window / 2
-            self.cong_window = 1
+            # self.retransmitted.append(seqnum)
+            # self.ssthresh = self.cong_window / 2
+            # self.cong_window = 1
             self.transmit_packet(seqnum)
 
     def transmit_packet(self, seqnum):
@@ -153,7 +153,7 @@ class Sender(object):
     def dups_ack(self, data):
         if data["next_byte_expected"] in self.dups_ack_count:
             if self.dups_ack_count[data["next_byte_expected"]] == 2: # this is going to be the third dup ack
-                self.fast_retransmit(data["next_byte_expected"])
+                self.send_untransmitted(data["next_byte_expected"])
                 del self.dups_ack_count[data["next_byte_expected"]]
             else:
                 self.dups_ack_count[data["next_byte_expected"]] += 1
@@ -162,9 +162,8 @@ class Sender(object):
 
  
     def process_ack(self, data):
-        if not data["sequence_number"] in self.retransmitted:
-            rtt_estimate = time.time() - self.sent_data[data["sequence_number"]]['sent_time']
-            self.RTT = ALPHA * rtt_estimate + (1 - ALPHA) * (self.RTT)
+        rtt_estimate = time.time() - self.sent_data[data["sequence_number"]]['sent_time']
+        self.RTT = ALPHA * rtt_estimate + (1 - ALPHA) * (self.RTT)
         log("[RTT]=" + str(self.RTT))
         #self.last_byte_acked = data["sequence_number"]
         self.acked_data[data["sequence_number"]] = True
@@ -207,7 +206,7 @@ class Sender(object):
         # start looking for incoming acks
         while not self.finished_transmitting:
             # receive data struct and unpack into variables
-            result = sock.recvfrom(MSS)
+            result = sock.recvfrom(7)
 
             if result:
                 (data, addr) = result
@@ -224,13 +223,10 @@ class Sender(object):
     def populate_sent_data(self):
         for x in range(self.first_byte, self.last_byte):
             self.sent_data[x] = {"sent": False, "timeout": 1.0}
-        log("[populated data]" + json.dumps(self.sent_data))
 
     def populate_acked_data(self):
         for x in range(self.first_byte, self.last_byte):
             self.acked_data[x] = False
-        log("[populated acked]" + json.dumps(self.acked_data))
-
         
 def decode(data):
     unpack_format = "!HlB"  

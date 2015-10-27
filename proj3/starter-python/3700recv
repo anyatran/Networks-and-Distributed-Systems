@@ -41,13 +41,9 @@ log("[bound] " + str(UDP_PORT))
 class Receiver(object):
     
     def __init__(self):
-        self.data = ""
-        self.last_byte_rcv = 0
         self.next_byte_expected = 0
         self.buffered_segments = {}  # {<seq_number>: {"data": String, "buffered": Boolean} }
-        self.sack = []
         self.addr = 0
-        self.ordered_seq = []
     
     # send ACKs to sender
     def send_ack(self, sequence_number):
@@ -66,12 +62,11 @@ class Receiver(object):
     def check_data(self, packet):
         flags = (packet["eof"] << 1) + packet["ack"]
         recv_hash = self.digest_data([packet["sequence_number"], flags, packet["data"]])
-        log("[check_data]=" + str(packet["checksum"] == recv_hash))
         return packet["checksum"] == recv_hash
 
     def done(self, packet):
         log("[completed]" + str(packet["eof"]))
-        log("[COMPLETE TEXT]" + self.data)
+        #log("[COMPLETE TEXT]" + self.data)
         self.next_byte_expected = -1
         self.send_ack(packet["sequence_number"])
         sys.exit(0)
@@ -95,12 +90,12 @@ class Receiver(object):
                 if (packet["sequence_number"] == self.next_byte_expected): #(self.last_byte_rcv + 1 == seq):
                     log("[recv data] " + str(packet["sequence_number"]) + " (" + str(len(packet["data"])) + ") ACCEPTED (in-order)")
                     if (self.buffered_segments[self.next_byte_expected]["eof"]):
-                        self.data += self.buffered_segments[self.next_byte_expected]["data"]
+                        #self.data += self.buffered_segments[self.next_byte_expected]["data"]
                         sys.stdout.write(self.buffered_segments[self.next_byte_expected]["data"])
                         self.done(packet)
                     else:
                         while ((self.next_byte_expected in self.buffered_segments) and (self.buffered_segments[self.next_byte_expected]["buffered"])):
-                            self.data += self.buffered_segments[self.next_byte_expected]["data"]
+                            #self.data += self.buffered_segments[self.next_byte_expected]["data"]
                             sys.stdout.write(self.buffered_segments[self.next_byte_expected]["data"])
                             if self.buffered_segments[self.next_byte_expected]["eof"]:
                                 self.done(packet)

@@ -62,7 +62,7 @@ class Sender(object):
         TCP sender transitions from Slow-Start to the Congestion Avoidance
         state. The default value is 65535 bytes (or 64 KBytes).
         '''
-        self.ssthresh = 300
+        self.ssthresh = 100
 
         self.dup_ack_thresh = 3
         '''
@@ -81,10 +81,12 @@ class Sender(object):
    
     def calc_cong_window_after_new_ack(self):
         if (self.cong_window < self.ssthresh):
-            self.cong_window = 2 * self.cong_window
+            self.cong_window += 1 #2 * self.cong_window
             log("[slow start] congestion window=" + str(self.cong_window) + " ssthresh= " + str(self.ssthresh))
         else:
-            self.cong_window += 1
+            self.cong_window += math.floor(1 / self.cong_window)
+            if (self.cong_window < 1):
+                self.cong_window = 1
             #self.cong_window = self.cong_window + self.cong_window / MSS
             log("[congestion avoidance] congestion window=" + str(self.cong_window) + " ssthresh= " + str(self.ssthresh))
 
@@ -94,16 +96,19 @@ class Sender(object):
         # self.ssthresh = max(ssthresh, 2)
         self.ssthresh = self.cong_window / 2
         self.cong_window = 1
-        if seqnum in self.dups_ack_count:
-            self.dups_ack_count[seqnum] = 0
+        #if seqnum in self.dups_ack_count:
+         #   self.dups_ack_count[seqnum] = 0
         ## reset dup acks counts
 
     def calc_cong_window_after_3_dup_acks(self, seqnum):
         self.cong_window = self.ssthresh / 2
+        if (self.cong_window < 1):
+            self.cong_window = 1
         self.dups_ack_count[seqnum] = 0
         #self.ssthresh = self.cong_window / 2
 
     def retransmit_packet(self, seqnum):
+        log("[acked data]=" + json.dumps(self.acked_data))
         if not self.acked_data[seqnum]:
             log("[retransmiting packet]=" + str(seqnum))
             self.transmit_packet(seqnum)
@@ -165,6 +170,8 @@ class Sender(object):
     def process_ack(self, data):
         rtt_estimate = time.time() - self.sent_data[data["sequence_number"]]['sent_time']
         self.RTT = ALPHA * rtt_estimate + (1 - ALPHA) * (self.RTT)
+        if (self.RTT < 0.05):
+            self.RTT = 0.05
         log("[RTT]=" + str(self.RTT))
         self.acked_data[data["sequence_number"]] = True
         self.last_byte_acked = data["sequence_number"]
@@ -172,7 +179,7 @@ class Sender(object):
             t = self.timers[data["sequence_number"]]
             t.cancel()
        # self.calc_cong_window_after_new_ack()
-        if data["sequence_number"] > data["next_byte_expected"]: # something is missing
+        if data["sequence_number"] != data["next_byte_expected"]: # something is missing
             self.process_dup_ack(data)
 
         if data["sequence_number"] == self.last_byte_sent:

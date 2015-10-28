@@ -89,18 +89,18 @@ class Receiver(object):
                 
                 if (packet["sequence_number"] == self.next_byte_expected): #(self.last_byte_rcv + 1 == seq):
                     log("[recv data] " + str(packet["sequence_number"]) + " (" + str(len(packet["data"])) + ") ACCEPTED (in-order)")
-                    if (self.buffered_segments[self.next_byte_expected]["eof"]):
+                    #if (self.buffered_segments[self.next_byte_expected]["eof"]):
                         #self.data += self.buffered_segments[self.next_byte_expected]["data"]
-                        sys.stdout.write(self.buffered_segments[self.next_byte_expected]["data"])
-                        self.done(packet)
-                    else:
-                        while ((self.next_byte_expected in self.buffered_segments) and (self.buffered_segments[self.next_byte_expected]["buffered"])):
+                     #   sys.stdout.write(self.buffered_segments[self.next_byte_expected]["data"])
+                      #  self.done(packet)
+                    #else:
+                    while ((self.next_byte_expected in self.buffered_segments) and (self.buffered_segments[self.next_byte_expected]["buffered"])):
                             #self.data += self.buffered_segments[self.next_byte_expected]["data"]
-                            sys.stdout.write(self.buffered_segments[self.next_byte_expected]["data"])
-                            if self.buffered_segments[self.next_byte_expected]["eof"]:
-                                self.done(packet)
-                            else:
-                                self.next_byte_expected += 1
+                        sys.stdout.write(self.buffered_segments[self.next_byte_expected]["data"])
+                        if self.buffered_segments[self.next_byte_expected]["eof"]:
+                            self.done(packet)
+                        else:
+                            self.next_byte_expected += 1
             self.send_ack(packet["sequence_number"])
 
 def decode_data(data):

@@ -14,6 +14,7 @@ import select
 import json
 import hashlib
 import struct
+import math
 from threading import Timer, Thread, Lock
 
 ## Maximum segment size, in bytes. Same for both sending/receiving endpoints.
@@ -50,8 +51,9 @@ class Sender(object):
         self.acked_data = {}  # {<seq> : Boolean}
         self.RTT = 0.5 # one second
         self.timers = {}
-        self.ssthresh = 100
+        self.ssthresh = 50
         self.dups_ack_count = {}
+        self.additive_increase = 0
 
     def digest_data(self, data):
         s = ""
@@ -63,13 +65,19 @@ class Sender(object):
     def calc_cong_window_after_new_ack(self):
         if (self.cong_window < self.ssthresh):
             self.cong_window += 1 #2 * self.cong_window
+            self.additive_increase = 0
             log("[slow start] congestion window=" + str(self.cong_window) + " ssthresh= " + str(self.ssthresh))
         else:
-            self.cong_window += 1 / float(self.cong_window)
+            self.additive_increase += 1 / float(self.cong_window)
+
+            if (self.additive_increase >= 1):
+                self.cong_window += 1
+                self.additive_increase = 0
+
             if (self.cong_window < 1):
                 self.cong_window = 1
             #self.cong_window = self.cong_window + self.cong_window / MSS
-            log("[congestion avoidance] congestion window=" + str(self.cong_window) + " ssthresh= " + str(self.ssthresh))
+            log("[congestion avoidance] congestion window=" + str(self.cong_window) + " [additive_increase]=" + str(self.additive_increase) + " ssthresh= " + str(self.ssthresh))
 
     def calc_cong_window_on_expired_timeout(self, seqnum):
         # flightSize = self.last_byte_sent - self.last_byte_acked
@@ -125,15 +133,15 @@ class Sender(object):
         t.start()
 
     def effective_window(self):
-        # start = self.last_byte_sent
-        # end = self.last_byte_sent + self.cong_window
-        # if end > self.last_byte:
-        #     end =  self.last_byte
-        # log("[window range]=" + str(range(start, end)))
-        flight_size = self.last_byte_sent - self.last_byte_acked
-        effective_window = self.cong_window - flight_size
-        log("[flight_size]=" + str(flight_size) + " [effective_window]=" + str(effective_window) + " [range]=" + str(range(flight_size, flight_size + int(math.ceil(self.cong_window)))))
-        return range(flight_size, flight_size + int(math.ceil(self.cong_window)))
+        start = self.last_byte_sent
+        end = self.last_byte_sent + self.cong_window
+        if end > self.last_byte:
+            end =  self.last_byte
+        log("[window range]=" + str(range(start, end)))
+        # flight_size = self.last_byte_sent - self.last_byte_acked
+        # effective_window = self.cong_window - flight_size
+        # log("[flight_size]=" + str(flight_size) + " [effective_window]=" + str(effective_window) + " [range]=" + str(range(flight_size, flight_size + int(math.ceil(self.cong_window)))))
+        return range(start, end)
 
     def send_untransmitted(self):
         for segment in self.effective_window():

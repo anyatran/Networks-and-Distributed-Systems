@@ -118,7 +118,7 @@ class Sender(object):
         ack = False
         flags = (eof << 1) + ack
         digested = self.digest_data([seq_num, flags, data])
-        tcp_header = struct.pack("!HH16s", seq_num, flags, digested)
+        tcp_header = struct.pack("!hH16s", seq_num, flags, digested)
         #log("[last byte sent]=" + str(self.last_byte_sent) + " ack=" + str(ack) + " eof=" + str(eof) + " segment check=" + str(digested) + " header_size=" + str(struct.calcsize("!LH16s")))
         #log("[tcp header]=" + tcp_header)
         packet = tcp_header + data
@@ -162,6 +162,27 @@ class Sender(object):
         return reduce(lambda x, val: x and val, self.acked_data.itervalues(), True)
         #return len(set(self.acked_data.values())) == True
 
+    def cancel_timeouts(self):
+        for t in self.timers.values():
+            t.cancel()
+    def send_fin(self):
+        seq_num = -1
+        data = "" 
+        eof = False
+        ack = False
+        flags = (eof << 1) + ack
+        digested = self.digest_data([seq_num, flags, data])
+        tcp_header = struct.pack("!hH16s", seq_num, flags, digested)
+        #log("[last byte sent]=" + str(self.last_byte_sent) + " ack=" + str(ack) + " eof=" + str(eof) + " segment check=" + str(digested) + " header_size=" + str(struct.calcsize("!LH16s")))
+        #log("[tcp header]=" + tcp_header)
+        packet = tcp_header + data
+        sock.sendto(packet, dest)
+        log("[send data] " + str(seq_num) + " (" + str(len(packet)) + ")")
+        #self.fin_timer = Timer(2 * self.RTT, self.send_fin)
+        #self..start()
+        sys.exit(0)
+
+
     def process_ack(self, data):
         rtt_estimate = time.time() - self.sent_data[data["sequence_number"]]['sent_time']
         self.RTT = ALPHA * rtt_estimate + (1 - ALPHA) * (self.RTT)
@@ -180,13 +201,19 @@ class Sender(object):
         if data["sequence_number"] == self.last_byte_sent:
             log("[acked last byte sent]" + str(data["sequence_number"]))
             self.calc_cong_window_after_new_ack()
-            if self.all_data_acked():#((data["next_byte_expected"] == -1) and self.all_data_acked()):
+            if self.all_data_acked():#(data["next_byte_expected"] == -1):
                 self.finished_transmitting = True
+                self.cancel_timeouts()
+                self.send_fin()
+                #self.timers = {}
             else: 
                 while (self.acked_data[self.last_byte_sent]):
                     if self.last_byte_sent == self.last_byte - 1:
                         log("[finished transmitting]")
                         self.finished_transmitting = True
+                        self.cancel_timeouts()
+                        self.send_find()
+                        #self.timers = {}
                     self.last_byte_sent += 1
                 if not self.finished_transmitting:
                     self.send_untransmitted()
@@ -226,10 +253,11 @@ class Sender(object):
     def populate_sent_data(self):
         for x in range(self.first_byte, self.last_byte):
             self.sent_data[x] = {"sent": False, "timeout": 0.5}
-
+        #self.sent_data[-1] = {"send": False, "timeout": 0.5}
     def populate_acked_data(self):
         for x in range(self.first_byte, self.last_byte):
             self.acked_data[x] = False
+        #self.sent_data[-1] = {"send": False, "timeout": 0.5}
         
 def decode(data):
     unpack_format = "!HlB"  
@@ -247,26 +275,4 @@ def read_input():
     s.send()
 
 read_input()
-
-# Now read in data, send packets
-
-# while True:
-#     log("ABOUT TO SLEEP")
-#     result = sock.recvfrom(MSS)
-
-#     if result:
-#         (data, addr) = result
-#         #try:
-#         decoded = decode(data)
-#         if decoded['ack']:
-#             s.process_ack(decoded)
-#             if not self.finished_transmitting:
-#                 s.send()
-#         #except (ValueError, KeyError, TypeError):
-#          #   log("[recv corrupt packet]")
-#     else:
-#         log("[error] timeout")
-#         sys.exit(-1)
-
-#sock.sendto(json.dumps({"src": 1, "dest": 2, "eof": True, "data": "", "sequence": SEQUENCE, "ack": False}), dest)
 sys.exit(0)

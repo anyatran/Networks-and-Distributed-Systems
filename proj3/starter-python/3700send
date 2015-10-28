@@ -159,7 +159,8 @@ class Sender(object):
             self.dups_ack_count[data["next_byte_expected"]] = 1
 
     def all_data_acked(self):
-        return len(set(self.acked_data.values())) == True
+        return reduce(lambda x, val: x and val, self.acked_data.itervalues(), True)
+        #return len(set(self.acked_data.values())) == True
 
     def process_ack(self, data):
         rtt_estimate = time.time() - self.sent_data[data["sequence_number"]]['sent_time']
@@ -179,7 +180,7 @@ class Sender(object):
         if data["sequence_number"] == self.last_byte_sent:
             log("[acked last byte sent]" + str(data["sequence_number"]))
             self.calc_cong_window_after_new_ack()
-            if ((data["next_byte_expected"] == -1) and self.all_data_acked()):
+            if self.all_data_acked():#((data["next_byte_expected"] == -1) and self.all_data_acked()):
                 self.finished_transmitting = True
             else: 
                 while (self.acked_data[self.last_byte_sent]):

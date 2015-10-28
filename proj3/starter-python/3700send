@@ -42,34 +42,15 @@ def log(string):
 class Sender(object):
 
     def __init__(self):
-        #Current congestion window size, in bytes.
         self.data = ""
         self.cong_window = 1
-        '''Last advertised size of the currently available space in the receiver's buffer.'''
-        self.recv_window = 65536
         self.last_byte_sent = 0
         self.last_byte_acked = 0
-        self.last_byte_sent_before_3dup_acks = -1
         self.sent_data = {} # entry = {<seq>: {sent: Boolean, timeout: int, sent_time: double}}
         self.acked_data = {}  # {<seq> : Boolean}
         self.RTT = 0.5 # one second
-
-        self.retransmitted = []
         self.timers = {}
-        '''
-        The Slow-Start threshold is a dynamically-set value indicating
-        an upper bound on the congestion window above which a
-        TCP sender transitions from Slow-Start to the Congestion Avoidance
-        state. The default value is 65535 bytes (or 64 KBytes).
-        '''
         self.ssthresh = 100
-
-        self.dup_ack_thresh = 3
-        '''
-        Counter of duplicate acknowledgments.
-        If the counter reaches three (3) or more dup-ACKs, the sender assumes
-        that the oldest unacknowledged segment is lost and needs to be retransmitted. */
-        '''
         self.dups_ack_count = {}
 
     def digest_data(self, data):
@@ -84,7 +65,7 @@ class Sender(object):
             self.cong_window += 1 #2 * self.cong_window
             log("[slow start] congestion window=" + str(self.cong_window) + " ssthresh= " + str(self.ssthresh))
         else:
-            self.cong_window += math.floor(1 / self.cong_window)
+            self.cong_window += 1 / float(self.cong_window)
             if (self.cong_window < 1):
                 self.cong_window = 1
             #self.cong_window = self.cong_window + self.cong_window / MSS
@@ -144,12 +125,15 @@ class Sender(object):
         t.start()
 
     def effective_window(self):
-        start = self.last_byte_sent
-        end = self.last_byte_sent + self.cong_window
-        if end > self.last_byte:
-            end =  self.last_byte
-        log("[window range]=" + str(range(start, end)))
-        return range(start, end)
+        # start = self.last_byte_sent
+        # end = self.last_byte_sent + self.cong_window
+        # if end > self.last_byte:
+        #     end =  self.last_byte
+        # log("[window range]=" + str(range(start, end)))
+        flight_size = self.last_byte_sent - self.last_byte_acked
+        effective_window = self.cong_window - flight_size
+        log("[flight_size]=" + str(flight_size) + " [effective_window]=" + str(effective_window) + " [range]=" + str(range(flight_size, flight_size + int(math.ceil(self.cong_window)))))
+        return range(flight_size, flight_size + int(math.ceil(self.cong_window)))
 
     def send_untransmitted(self):
         for segment in self.effective_window():

@@ -158,7 +158,9 @@ class Sender(object):
         else:
             self.dups_ack_count[data["next_byte_expected"]] = 1
 
- 
+    def all_data_acked():
+        return len(set(self.acked_data.values())) == True
+
     def process_ack(self, data):
         rtt_estimate = time.time() - self.sent_data[data["sequence_number"]]['sent_time']
         self.RTT = ALPHA * rtt_estimate + (1 - ALPHA) * (self.RTT)
@@ -171,13 +173,13 @@ class Sender(object):
             t = self.timers[data["sequence_number"]]
             t.cancel()
        # self.calc_cong_window_after_new_ack()
-        if data["sequence_number"] != data["next_byte_expected"]: # something is missing
+        if data["sequence_number"] > data["next_byte_expected"]: # something is missing
             self.process_dup_ack(data)
 
         if data["sequence_number"] == self.last_byte_sent:
             log("[acked last byte sent]" + str(data["sequence_number"]))
             self.calc_cong_window_after_new_ack()
-            if(data["next_byte_expected"] == -1):
+            if ((data["next_byte_expected"] == -1) and all_data_acked()):
                 self.finished_transmitting = True
             else: 
                 while (self.acked_data[self.last_byte_sent]):

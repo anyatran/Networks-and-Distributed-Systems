@@ -158,7 +158,7 @@ class Sender(object):
         else:
             self.dups_ack_count[data["next_byte_expected"]] = 1
 
-    def all_data_acked():
+    def all_data_acked(self):
         return len(set(self.acked_data.values())) == True
 
     def process_ack(self, data):

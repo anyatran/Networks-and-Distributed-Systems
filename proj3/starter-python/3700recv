@@ -2,7 +2,6 @@
 #
 # CS3700, Spring 2015
 # Project 2 Starter Code
-#
 
 import sys
 import socket
@@ -10,58 +9,147 @@ import time
 import datetime
 import select
 import json
+import struct
+import hashlib
+import struct 
 
-def log(string):
-  sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
-
-MSG_SIZE = 1500
+MSG_SIZE = 1500 
+DATA_LENGTH = 1480
 TIMEOUT = 30
+MSS = MSG_SIZE - 20 
+SEQUENCE = 0
+ADV_W = 1
 
 # Bind to localhost and an ephemeral port
 UDP_IP = "127.0.0.1"
 UDP_PORT = 0
+
+
+def log(string):
+    sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
+
 
 # Set up the socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
 sock.bind((UDP_IP, UDP_PORT))
 sock.settimeout(TIMEOUT)
 
+LAST_SEQ_RECV = 0
 # Get port we bound to
 UDP_PORT = sock.getsockname()[1]
 log("[bound] " + str(UDP_PORT))
 
-# Now listen for packets
-while True:
-  result = sock.recvfrom(MSG_SIZE)
+class Receiver(object):
+    
+    def __init__(self):
+        self.next_byte_expected = 0
+        self.buffered_segments = {}  # {<seq_number>: {"data": String, "buffered": Boolean} }
+        self.addr = 0
+    
+    ## Send ACK message to the sender with sequence_number encoded in the specified format
+    def send_ack(self, sequence_number):
+        ack = True
+        checksum = seld.digest_data([sequence_number, self.next_byte_expected, ack])
+        msg = struct.pack("!HlB16s", sequence_number, self.next_byte_expected, ack, checksum)
+        if sock.sendto(msg, self.addr) < len(msg):
+            log("[error] unable to fully send packet")
 
-  # If nothing is ready, we hit the timeout
-  if result:
-    (data, addr) = result
+    ## Decode this data in the specified format
+    def decode_data(data):
+        unpack_format = "!HH16s" # sequence number, flags, checksum   
+        head_size = struct.calcsize(unpack_format)
+        header = data[:head_size]
+        body = data[head_size:]
+        unpacked = struct.unpack(unpack_format, header)
+        sequence_number, flags, data_check = unpacked
+        eof = flags >> 1 
+        ack = flags & 1
+        data_segment = { "sequence_number": sequence_number, 
+                        "ack": ack,
+                        "eof": eof,
+                        "checksum": data_check,
+                        "data": body
+                        }
+        return data_segment
 
-    try:
-      decoded = json.loads(data)
+    ## Takes data and uses md5 to create a checksum
+    def digest_data(self, data):
+        s = ""
+        for d in data: 
+            s += str(d)
+        return hashlib.md5(s).digest()
 
-      # If the EOF flag is set, exit
-      if (decoded['eof']):
+    ## Checks if this packet is valid
+    def check_data(self, packet):
+        flags = (packet["eof"] << 1) + packet["ack"]
+        recv_hash = self.digest_data([packet["sequence_number"], flags, packet["data"]])
+        return packet["checksum"] == recv_hash
+
+    ## Executes when received got all data up to eof
+    ## We send several acks to sender to make sure he gets it
+    ## Exits
+    def done(self, packet):
+        self.next_byte_expected = -1
+        self.send_ack(packet["sequence_number"])
+        self.send_ack(packet["sequence_number"])
+        self.send_ack(packet["sequence_number"])
+        self.send_ack(packet["sequence_number"])
         log("[completed]")
         sys.exit(0)
 
-      # If there is data, we accept it and print it out
-      if (decoded['data']):
-        # If we receive data, we assume it's in-order
-        # You will need to do much more here
-        log("[recv data] " + str(decoded['sequence']) + " (" + str(len(decoded['data'])) + ") ACCEPTED (in-order)")
-        sys.stdout.write(decoded['data'])
+    ## Processes packet
+    def process_data(self, packet):
 
-      # Send back an ack to the sender
-      msg = json.dumps({"ack": decoded['sequence'] + len(decoded['data'])})
-      log("ABOUT TO SEND " + msg)
-      if sock.sendto(msg, addr) < len(msg):
-        log("[error] unable to fully send packet")
+        ## Check if data is not corrupted
+        if (self.check_data(packet)):
 
-    except (ValueError, KeyError, TypeError) as e:
-      log("[recv corrupt packet]")
-      raise e
-  else:
-    log("[error] timeout")
-    sys.exit(-1)
+            if (packet["sequence_number"] not in self.buffered_segments):
+                self.buffered_segments[packet["sequence_number"]] = {"data": "", "eof": False, "buffered": False}
+
+            ## If data is not buffered
+            if not self.buffered_segments[packet["sequence_number"]]["buffered"]:
+                self.buffered_segments[packet["sequence_number"]]["data"] = packet["data"]
+                self.buffered_segments[packet["sequence_number"]]["buffered"] = True
+                self.buffered_segments[packet["sequence_number"]]["eof"] = packet["eof"] 
+                
+                ## Packet received in order
+                if (packet["sequence_number"] == self.next_byte_expected):
+                    log("[recv data] " + str(packet["sequence_number"] * DATA_LENGTH) + " (" + str(len(packet["data"])) + ") ACCEPTED (in-order)")
+                    while ((self.next_byte_expected in self.buffered_segments) and (self.buffered_segments[self.next_byte_expected]["buffered"])):
+                        sys.stdout.write(self.buffered_segments[self.next_byte_expected]["data"])
+                        if self.buffered_segments[self.next_byte_expected]["eof"]:
+                            self.done(packet)
+                        else:
+                            self.next_byte_expected += 1
+                ## Packet received out of order
+                else:
+                    log("[recv data] " + str(packet["sequence_number"] * DATA_LENGTH) + " (" + str(len(packet["data"])) + ") ACCEPTED (out-of-order)")
+            self.send_ack(packet["sequence_number"])
+        ## Received corrupted packet
+        else:
+            log("[recv data] " + str(packet["sequence_number"] * DATA_LENGTH) + " (" + str(len(packet["data"])) + ") IGNORED")
+            log("[recv corrupt packet]")
+
+r = Receiver()
+
+## Listen for packets
+while True:
+    result = sock.recvfrom(MSG_SIZE)
+    rcv_eof = False
+    # If nothing is ready, we hit the timeout
+    if result:        
+        (res, addr) = result
+        r.addr = addr
+        decoded = decode_data(res)
+
+       try:
+            # If there is data, process it
+            if (decoded["data"]):
+                r.process_data(decoded)
+
+        except (ValueError, KeyError, TypeError) as e:
+            log("[recv corrupt packet]")
+            raise e
+    else:
+        log("[error] timeout")
+        sys.exit(-1)

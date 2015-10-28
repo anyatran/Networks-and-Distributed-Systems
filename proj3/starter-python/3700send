@@ -3,6 +3,8 @@
 # CS3700, Spring 2015
 # Project 2 Starter Code
 #
+# NEW RENO: http://research.ijcaonline.org/volume40/number12/pxc3877351.pdf
+# SACK: http://packetlife.net/blog/2010/jun/17/tcp-selective-acknowledgments-sack/
 
 import sys
 import socket
@@ -10,21 +12,16 @@ import time
 import datetime
 import select
 import json
+import hashlib
+import struct
+import math
+from threading import Timer, Thread, Lock
 
-MSG_SIZE = 1500
-DATA_SIZE = 1000
-DATA = {}
+## Maximum segment size, in bytes. 
+MSS = 1500 
+DATA_LENGTH = MSS - 20 
 TIMEOUT = 30
-SEQUENCE = 0
-ACK = 0
-DUPS_ACK_COUNT = 0
-LAST_BYTE_SENT = 0
-LAST_ACK_RCV = 0
-C_WIN = 1
-ADV_WIN = 0
-STATE = 0 #0 = slow start, 1 = AI
 ALPHA = 0.875
-SSTHRESH = ADV_WIN
 
 # Bind to localhost and an ephemeral port
 IP_PORT = sys.argv[1]
@@ -35,70 +32,254 @@ dest = (UDP_IP, UDP_PORT)
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
 sock.settimeout(TIMEOUT)
 
-#calculates estimated timeout time based on RTTs
-#Inputs: SampleRTT, old estimatedRTT, alpha
-def estimate_timeout(timestamp, old_rtt):
-    sample_rtt = time.time() - timestamp #current_time - timestamp
-    estimated_rtt = (1 - ALPHA) * old_rtt * (0.875 * ALPHA)
-    return estimated_rtt
-
-#calculates congestion window
-#CALL THIS FN WHENEVER ACK IS RECEIVED
-def new_ack_rcv():
-    global C_WIN
-    if (C_WIN < SSTHRESH):
-        #slow start
-        C_WIN = CWIN + 1
-    #AI
-    else:
-        C_WIN = C_WIN + (1/C_WIN)
-
-#3 
-
 def log(string):
-  sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
+    sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
 
-def send_next_packet():
-  global SEQUENCE
 
-  data = sys.stdin.read(DATA_SIZE)
-  if (len(data) > 0):
-    msg = json.dumps({"src": 1, "dest": 2, "sequence": SEQUENCE, "data": data, "ack": False, "eof": False})
-    SEQUENCE += len(data)
+class Sender(object):
 
-    if sock.sendto(msg, dest) < len(msg):
-      log("[error] unable to fully send packet")
-    else:
-      log("[send data] " + str(SEQUENCE) + " (" + str(len(data)) + ")")
-    return True
-  else:
-    return False
+    def __init__(self):
+        self.data = ""
+        self.cong_window = 1
+        self.last_byte_sent = 0
+        self.sent_data = {} # entry = {<seq_n>: {sent: Boolean, timeout: int, sent_time: double}}
+        self.acked_data = {}  # {<seq> : Boolean}
+        self.RTT = 0.5 # half second
+        self.timers = {}
+        self.ssthresh = 50
+        self.dups_ack_count = {}
+        self.additive_increase = 0
 
-# Send first packet
-send_next_packet()
+    ## Takes data and uses md5 to create a checksum
+    def digest_data(self, data):
+        s = ""
+        for d in data: 
+            s += str(d)
+        return hashlib.md5(s).digest()
+   
+    ## Calculated congestion window after new ack is received
+    def calc_cong_window_after_new_ack(self):
+        ## This is slow start, for each packet acked add one to congestion window
+        if (self.cong_window < self.ssthresh):
+            self.cong_window += 1 
+            self.additive_increase = 0
+            log("[slow start] congestion_window=" + str(self.cong_window))
 
-# Now read in data, send packets
-while True:
-  log("ABOUT TO SLEEP")
-  result = sock.recvfrom(MSG_SIZE)
+        ## This is additive increase, store float value in a variable, and add one
+        ## to congestion window once it reached 1
+        else:
+            self.additive_increase += 1 / float(self.cong_window)
+            if (self.additive_increase >= 1):
+                self.cong_window += 1
+                self.additive_increase = 0
+            if (self.cong_window < 1):
+                self.cong_window = 1
+            log("[congestion avoidance] congestion_window=" + str(self.cong_window) + " additive_increase=" + str(self.additive_increase))
 
-  if result:
-    (data, addr) = result
-    try:
-      decoded = json.loads(data)
+    ## Calculates congestion window and ssthresh after timeout expired
+    ## Sets ssthresh as half of congestion window
+    ## Sets state to slow start
+    def calc_cong_window_on_expired_timeout(self):
+        self.ssthresh = max(self.cong_window / 2, 2)
+        self.cong_window = 1
+        log("[expired timeout] congestion_window=" + str(self.cong_window))
 
-      # If there is an ack, send next packet
-      if decoded['ack'] == SEQUENCE:
-        log("[recv ack] " + str(SEQUENCE))
+    ## Calculates congestion window after 3 duplicate acks were received
+    ## Sets congestion window value as half of ssthresh
+    def calc_cong_window_after_3_dup_acks(self, seqnum):
+        self.cong_window = self.ssthresh / 2
+        if (self.cong_window < 1):
+            self.cong_window = 1
+        self.dups_ack_count[seqnum] = 0
 
-        # Try to send next packet; break if no more data
-        if (not send_next_packet()):
-          break
-    except (ValueError, KeyError, TypeError):
-      log("[recv corrupt packet]")
-  else:
-    log("[error] timeout")
-    sys.exit(-1)
+    ## Retransmits packet with sequence number seqnum if it was not acked
+    def retransmit_packet(self, seqnum):
+        if not self.acked_data[seqnum]:
+            log("[retransmiting packet] " + str(seqnum))
+            self.transmit_packet(seqnum)
 
-sock.sendto(json.dumps({"src": 1, "dest": 2, "eof": True, "data": "", "sequence": SEQUENCE, "ack": False}), dest)
+    ## Executes on expired timeout
+    ## Calculates congestion window and retransmits packet with sequence number seqnum
+    def on_expired_timeout(self, seqnum):
+        log("[timeout expired] " + str(seqnum))
+        if not self.finished_transmitting:
+            self.calc_cong_window_on_expired_timeout()
+            self.retransmit_packet(seqnum)
+
+    ## Executes on three duplicate acks
+    ## Calculated congestion window and retransmits packet with sequence numner seqnum
+    def on_3_dup_acks(self, seqnum):
+        log("[3 dup acks] " + str(seqnum))
+        self.calc_cong_window_after_3_dup_acks(seqnum)
+        self.retransmit_packet(seqnum)
+
+    ## Transmits one packet with sequence number seqnum
+    def transmit_packet(self, seqnum):
+        ## Create packet
+        seq_num = (seqnum - self.first_byte)
+        data = self.data[seq_num * DATA_LENGTH : seq_num * DATA_LENGTH + DATA_LENGTH]
+        eof = False if seq_num != self.segments_number - 1 else True
+        ack = False
+        flags = (eof << 1) + ack
+        digested = self.digest_data([seq_num, flags, data])
+        tcp_header = struct.pack("!hH16s", seq_num, flags, digested)
+        packet = tcp_header + data
+        sock.sendto(packet, dest)
+
+        ## Add this sequence number to a list of sent data
+        p = self.sent_data[seqnum]
+        p['sent'] = True
+        p['sent_time'] = time.time()
+        p['timeout'] = 2 * self.RTT
+        log("[send data] " + str(seq_num * DATA_LENGTH) + " (" + str(len(packet)) + ")")
+
+        ## Create timer for this packek
+        t = Timer(p['timeout'], self.on_expired_timeout, [seqnum])
+        self.timers[seq_num] = t
+        t.start()
+
+    ## Returns effective window 
+    ## Effective window is a range from last sequence number that was sent and acked
+    ## to that number plus congestion window
+    ## This range sometimes might include sequence numbers that were already sent but
+    ## it will not resend them because it only sends packets that weren't sent before
+    def effective_window(self):
+        start = self.last_byte_sent
+        end = self.last_byte_sent + self.cong_window
+        if end > self.last_byte:
+            end =  self.last_byte
+        return range(start, end)
+
+    ## Send untransmitted packets
+    def send_untransmitted(self):
+        for segment in self.effective_window():
+            ## Do not send data if it was sent before
+            if not self.sent_data[segment]['sent']:
+                self.transmit_packet(segment)
+
+    ## Processes duplicates acks
+    ## Adds an entry to a dictionary of duplicates acks
+    ## If some that sequence number was acked three times, execute self.on_3_dup_acks
+    def process_dup_ack(self, data):
+        if data["next_byte_expected"] in self.dups_ack_count:
+            if self.dups_ack_count[data["next_byte_expected"]] == 2: # this is going to be the third dup ack
+                self.on_3_dup_acks(data["next_byte_expected"])
+                del self.dups_ack_count[data["next_byte_expected"]]
+            else:
+                self.dups_ack_count[data["next_byte_expected"]] += 1
+        else:
+            self.dups_ack_count[data["next_byte_expected"]] = 1
+
+    ## Process acks
+    def process_ack(self, data):
+        log("[recv ack] " + str(data["sequence_number"] * DATA_LENGTH))
+
+        # Calculate RTT
+        rtt_estimate = time.time() - self.sent_data[data["sequence_number"]]['sent_time']
+        self.RTT = ALPHA * rtt_estimate + (1 - ALPHA) * (self.RTT)
+        if (self.RTT < 0.05):
+            self.RTT = 0.05
+
+        self.acked_data[data["sequence_number"]] = True
+
+        ## Cancel Timer for this sequence number because it was acked
+        if (data["sequence_number"] in self.timers):
+            t = self.timers[data["sequence_number"]]
+            t.cancel()
+
+        ## If next byte expected is -1, that means that receiver got all packets, exit.
+        if data["next_byte_expected"] == -1:
+            self.finished_transmitting = True
+            log("[completed]")
+            sys.exit(0)
+        else:
+
+            ## If some data is missing, then next byte expected will be less than sequence number
+            ## of the packet that was acked, process it as a dupicate ack
+            if data["sequence_number"] > data["next_byte_expected"]: # something is missing
+                self.process_dup_ack(data)
+
+            ## Sequence number of the packet is the same one as the last one that was sent
+            if data["sequence_number"] == self.last_byte_sent:
+                self.calc_cong_window_after_new_ack()
+
+                ## If next byte expected is -1, that means that receiver got all packets, exit.
+                if (data["next_byte_expected"] == -1):
+                    self.finished_transmitting = True
+                    log("[completed]")
+                    sys.exit(0)
+
+                ## Reciever hasn't gotten all packets yet
+                else: 
+                    while (self.acked_data[self.last_byte_sent]):
+                        if self.last_byte_sent == self.last_byte - 1:
+                            self.finished_transmitting = True
+                            log("[completed]")
+                            sys.exit(0)
+                        self.last_byte_sent += 1
+                    if not self.finished_transmitting:
+                        self.send_untransmitted()
+
+    ## Sends a packet to the receiver
+    def send(self):
+        self.finished_transmitting = False
+        self.segments_number = len(self.data) / DATA_LENGTH
+
+        if len(self.data) % DATA_LENGTH: 
+            self.segments_number += 1
+
+        self.first_byte = self.last_byte_sent
+        self.last_byte = self.last_byte_sent + self.segments_number
+
+        self.populate_sent_data()
+        self.populate_acked_data()
+
+        ## Start sending 
+        self.send_untransmitted()
+
+        ## Receives messages from receiver until not finished
+        while not self.finished_transmitting:
+            result = sock.recvfrom(23)
+
+            if result:
+                (data, addr) = result
+                try:
+                    decoded = self.decode(data)
+                    ## If received data is ACK
+                    if decoded['ack']:
+                        ## If received data was not corrupted
+                        if (self.digest([decoded["sequence_number"], decoded["next_byte_expected"], decoded["ack"]]) == decoded["checksum"]):
+                            s.process_ack(decoded)
+                except (ValueError, KeyError, TypeError):
+                    log("[recv corrupt packet]")
+            else:
+                log("[error] timeout")
+                sys.exit(-1)
+
+    ## Creates a dictionary of sent data from first byte to last byte 
+    def populate_sent_data(self):
+        for x in range(self.first_byte, self.last_byte):
+            self.sent_data[x] = {"sent": False, "timeout": 0.5}
+
+    ## Creates a dictionary of acked data from first byte to last byte 
+    def populate_acked_data(self):
+        for x in range(self.first_byte, self.last_byte):
+            self.acked_data[x] = False
+
+    ## Decodes given data in the specified format   
+    def decode(data):
+        unpack_format = "!HlB16s"  
+        unpacked = struct.unpack(unpack_format, data)
+        sequence_number, next_byte_expected, ack, checksum = unpacked    
+        data_segment = { "sequence_number": sequence_number, "next_byte_expected": next_byte_expected, "ack": ack , "checksum": checksum}
+        return data_segment
+
+s = Sender()
+
+## Reads input from stdin
+def read_input():
+    s.data = sys.stdin.read()
+    s.send()
+
+read_input()
 sys.exit(0)

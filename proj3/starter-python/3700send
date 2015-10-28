@@ -160,7 +160,9 @@ class Sender(object):
 
     def all_data_acked(self):
         return len(set(self.acked_data.values())) == True
-
+    def cancel_timeouts(self):
+        for t in self.timers.values():
+            t.cancel()
     def process_ack(self, data):
         rtt_estimate = time.time() - self.sent_data[data["sequence_number"]]['sent_time']
         self.RTT = ALPHA * rtt_estimate + (1 - ALPHA) * (self.RTT)
@@ -181,13 +183,15 @@ class Sender(object):
             self.calc_cong_window_after_new_ack()
             if (data["next_byte_expected"] == -1):
                 self.finished_transmitting = True
-                self.timers = {}
+                self.cancel_timeouts()
+                #self.timers = {}
             else: 
                 while (self.acked_data[self.last_byte_sent]):
                     if self.last_byte_sent == self.last_byte - 1:
                         log("[finished transmitting]")
                         self.finished_transmitting = True
-                        self.timers = {}
+                        self.cancel_timeouts()
+                        #self.timers = {}
                     self.last_byte_sent += 1
                 if not self.finished_transmitting:
                     self.send_untransmitted()

@@ -64,7 +64,7 @@ class Sender(object):
    
     def calc_cong_window_after_new_ack(self):
         if (self.cong_window < self.ssthresh):
-            self.cong_window += 1 #2 * self.cong_window
+            self.cong_window += 1 
             self.additive_increase = 0
             log("[slow start] congestion window=" + str(self.cong_window) + " ssthresh= " + str(self.ssthresh))
         else:
@@ -83,7 +83,7 @@ class Sender(object):
         # flightSize = self.last_byte_sent - self.last_byte_acked
         # ssthresh = flightSize / 2
         # self.ssthresh = max(ssthresh, 2)
-        self.ssthresh = self.cong_window / 2
+        self.ssthresh = max(self.cong_window / 2, 2)
         self.cong_window = 1
         #if seqnum in self.dups_ack_count:
          #   self.dups_ack_count[seqnum] = 0

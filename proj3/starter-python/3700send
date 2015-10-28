@@ -171,7 +171,7 @@ class Sender(object):
             t = self.timers[data["sequence_number"]]
             t.cancel()
        # self.calc_cong_window_after_new_ack()
-        if data["sequence_number"] != data["next_byte_expected"]: # something is missing
+        if data["sequence_number"] > data["next_byte_expected"]: # something is missing
             self.process_dup_ack(data)
 
         if data["sequence_number"] == self.last_byte_sent:

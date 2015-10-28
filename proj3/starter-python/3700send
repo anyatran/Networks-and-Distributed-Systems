@@ -42,9 +42,9 @@ class Sender(object):
         self.data = ""
         self.cong_window = 1
         self.last_byte_sent = 0
-        self.sent_data = {} # entry = {<seq_n>: {sent: Boolean, timeout: int, sent_time: double}}
-        self.acked_data = {}  # {<seq> : Boolean}
-        self.RTT = 0.5 # half second
+        self.sent_data = {} 
+        self.acked_data = {} 
+        self.RTT = 0.5 
         self.timers = {}
         self.ssthresh = 50
         self.dups_ack_count = {}

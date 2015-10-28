@@ -243,15 +243,15 @@ class Sender(object):
 
             if result:
                 (data, addr) = result
-                try:
-                    decoded = self.decode(data)
+                #try:
+                decoded = self.decode(data)
                     ## If received data is ACK
-                    if decoded['ack']:
+                if decoded['ack']:
                         ## If received data was not corrupted
-                        if (self.digest([decoded["sequence_number"], decoded["next_byte_expected"], decoded["ack"]]) == decoded["checksum"]):
-                            s.process_ack(decoded)
-                except (ValueError, KeyError, TypeError):
-                    log("[recv corrupt packet]")
+                    if (self.digest_data([decoded["sequence_number"], decoded["next_byte_expected"], decoded["ack"]]) == decoded["checksum"]):
+                        s.process_ack(decoded)
+    #            except (ValueError, KeyError, TypeError):
+     #               log("[recv corrupt packet]")
             else:
                 log("[error] timeout")
                 sys.exit(-1)
@@ -267,7 +267,7 @@ class Sender(object):
             self.acked_data[x] = False
 
     ## Decodes given data in the specified format   
-    def decode(data):
+    def decode(self, data):
         unpack_format = "!HlB16s"  
         unpacked = struct.unpack(unpack_format, data)
         sequence_number, next_byte_expected, ack, checksum = unpacked    

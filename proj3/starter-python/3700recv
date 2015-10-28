@@ -49,13 +49,13 @@ class Receiver(object):
     ## Send ACK message to the sender with sequence_number encoded in the specified format
     def send_ack(self, sequence_number):
         ack = True
-        checksum = seld.digest_data([sequence_number, self.next_byte_expected, ack])
+        checksum = self.digest_data([sequence_number, self.next_byte_expected, ack])
         msg = struct.pack("!HlB16s", sequence_number, self.next_byte_expected, ack, checksum)
         if sock.sendto(msg, self.addr) < len(msg):
             log("[error] unable to fully send packet")
 
     ## Decode this data in the specified format
-    def decode_data(data):
+    def decode_data(self, data):
         unpack_format = "!HH16s" # sequence number, flags, checksum   
         head_size = struct.calcsize(unpack_format)
         header = data[:head_size]
@@ -140,16 +140,16 @@ while True:
     if result:        
         (res, addr) = result
         r.addr = addr
-        decoded = decode_data(res)
+        decoded = r.decode_data(res)
 
-       try:
+        #try:
             # If there is data, process it
-            if (decoded["data"]):
-                r.process_data(decoded)
+        if (decoded["data"]):
+            r.process_data(decoded)
 
-        except (ValueError, KeyError, TypeError) as e:
-            log("[recv corrupt packet]")
-            raise e
+    #    except (ValueError, KeyError, TypeError) as e:
+     #       log("[recv corrupt packet]")
+      #      raise e
     else:
         log("[error] timeout")
         sys.exit(-1)

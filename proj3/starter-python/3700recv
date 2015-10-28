@@ -14,6 +14,7 @@ import hashlib
 import struct 
 
 MSG_SIZE = 1500 
+DATA_LENGTH = 1480
 TIMEOUT = 30
 MSS = MSG_SIZE - 20 
 SEQUENCE = 0
@@ -45,120 +46,110 @@ class Receiver(object):
         self.buffered_segments = {}  # {<seq_number>: {"data": String, "buffered": Boolean} }
         self.addr = 0
     
-    # send ACKs to sender
+    ## Send ACK message to the sender with sequence_number encoded in the specified format
     def send_ack(self, sequence_number):
-        msg = struct.pack("!HlB", sequence_number, self.next_byte_expected, True)
-        log("[SENDING ACK] seq_n=" + str(sequence_number) + "expeceted: " + str(self.next_byte_expected))
+        ack = True
+        checksum = seld.digest_data([sequence_number, self.next_byte_expected, ack])
+        msg = struct.pack("!HlB16s", sequence_number, self.next_byte_expected, ack, checksum)
         if sock.sendto(msg, self.addr) < len(msg):
             log("[error] unable to fully send packet")
 
+    ## Decode this data in the specified format
+    def decode_data(data):
+        unpack_format = "!HH16s" # sequence number, flags, checksum   
+        head_size = struct.calcsize(unpack_format)
+        header = data[:head_size]
+        body = data[head_size:]
+        unpacked = struct.unpack(unpack_format, header)
+        sequence_number, flags, data_check = unpacked
+        eof = flags >> 1 
+        ack = flags & 1
+        data_segment = { "sequence_number": sequence_number, 
+                        "ack": ack,
+                        "eof": eof,
+                        "checksum": data_check,
+                        "data": body
+                        }
+        return data_segment
+
+    ## Takes data and uses md5 to create a checksum
     def digest_data(self, data):
         s = ""
         for d in data: 
             s += str(d)
-        #log("[check digested]=" + str(s) + "for data=" + str(data))
         return hashlib.md5(s).digest()
 
+    ## Checks if this packet is valid
     def check_data(self, packet):
         flags = (packet["eof"] << 1) + packet["ack"]
         recv_hash = self.digest_data([packet["sequence_number"], flags, packet["data"]])
         return packet["checksum"] == recv_hash
 
+    ## Executes when received got all data up to eof
+    ## We send several acks to sender to make sure he gets it
+    ## Exits
     def done(self, packet):
-        log("[completed]" + str(packet["eof"]))
-        #log("[COMPLETE TEXT]" + self.data)
         self.next_byte_expected = -1
         self.send_ack(packet["sequence_number"])
         self.send_ack(packet["sequence_number"])
         self.send_ack(packet["sequence_number"])
         self.send_ack(packet["sequence_number"])
+        log("[completed]")
         sys.exit(0)
 
-    ## Process this data
-    ## data structure: (seq, ack, eof, time, hash, data)
+    ## Processes packet
     def process_data(self, packet):
 
+        ## Check if data is not corrupted
         if (self.check_data(packet)):
-            #self.send_ack(packet["sequence_number"])
 
             if (packet["sequence_number"] not in self.buffered_segments):
                 self.buffered_segments[packet["sequence_number"]] = {"data": "", "eof": False, "buffered": False}
 
-
+            ## If data is not buffered
             if not self.buffered_segments[packet["sequence_number"]]["buffered"]:
                 self.buffered_segments[packet["sequence_number"]]["data"] = packet["data"]
                 self.buffered_segments[packet["sequence_number"]]["buffered"] = True
                 self.buffered_segments[packet["sequence_number"]]["eof"] = packet["eof"] 
                 
-                if (packet["sequence_number"] == self.next_byte_expected): #(self.last_byte_rcv + 1 == seq):
-                    log("[recv data] " + str(packet["sequence_number"]) + " (" + str(len(packet["data"])) + ") ACCEPTED (in-order)")
-                    #if (self.buffered_segments[self.next_byte_expected]["eof"]):
-                        #self.data += self.buffered_segments[self.next_byte_expected]["data"]
-                     #   sys.stdout.write(self.buffered_segments[self.next_byte_expected]["data"])
-                      #  self.done(packet)
-                    #else:
+                ## Packet received in order
+                if (packet["sequence_number"] == self.next_byte_expected):
+                    log("[recv data] " + str(packet["sequence_number"] * DATA_LENGTH) + " (" + str(len(packet["data"])) + ") ACCEPTED (in-order)")
                     while ((self.next_byte_expected in self.buffered_segments) and (self.buffered_segments[self.next_byte_expected]["buffered"])):
-                            #self.data += self.buffered_segments[self.next_byte_expected]["data"]
                         sys.stdout.write(self.buffered_segments[self.next_byte_expected]["data"])
                         if self.buffered_segments[self.next_byte_expected]["eof"]:
                             self.done(packet)
                         else:
                             self.next_byte_expected += 1
+                ## Packet received out of order
+                else:
+                    log("[recv data] " + str(packet["sequence_number"] * DATA_LENGTH) + " (" + str(len(packet["data"])) + ") ACCEPTED (out-of-order)")
             self.send_ack(packet["sequence_number"])
-
-def decode_data(data):
-    unpack_format = "!HH16s" #sequence, flag, hash   
-    head_size = struct.calcsize(unpack_format)
-    header = data[:head_size]
-    body = data[head_size:]
-    #log("[original data]=" + str(data) + " header size=" + str(head_size) + " header=" + str(header) + " body=" + str(body))
-    unpacked = struct.unpack(unpack_format, header)
-    #log("[received unpacked data]=" + str(unpacked))
-    sequence_number, flags, data_check = unpacked
-    eof = flags >> 1       # unpacking
-    ack = flags & 1
-    log("[sequence_number]=" + str(sequence_number) + " ack=" + str(ack) + " eof=" + str(eof)  + " data_check=" + str(data_check))
-    data_segment = { "sequence_number": sequence_number, 
-                    "ack": ack,
-                    "eof": eof,
-                    "checksum": data_check,
-                    "data": body
-                    }
-    # log("[data segment]=" + json.dumps(data_segment))
-    return data_segment
+        ## Received corrupted packet
+        else:
+            log("[recv data] " + str(packet["sequence_number"] * DATA_LENGTH) + " (" + str(len(packet["data"])) + ") IGNORED")
+            log("[recv corrupt packet]")
 
 r = Receiver()
-# Now listen for packets
+
+## Listen for packets
 while True:
     result = sock.recvfrom(MSG_SIZE)
     rcv_eof = False
     # If nothing is ready, we hit the timeout
-    if result:
-        #(seq, ack, eof, time, hash, data)
-        
+    if result:        
         (res, addr) = result
         r.addr = addr
-
         decoded = decode_data(res)
 
-       # try:
-            #decoded = json.loads(data)
-            #print decoded
-            # If the EOF flag is set, exit
-        if (decoded["eof"]):#last packet is received but maybe not in order yet
-            #log("[completed]" + str(decoded["eof"]))
-            r.process_data(decoded)
-            #log("[COMPLETE TEXT]" + r.data)
-            #sys.exit(0)
+       try:
+            # If there is data, process it
+            if (decoded["data"]):
+                r.process_data(decoded)
 
-            # If there is data, we accept it and print it out
-        elif (decoded["data"]):#(decoded['data']):
-                # If we receive data, we assume it's in-order
-            r.process_data(decoded)
-
-        #except (ValueError, KeyError, TypeError) as e:
-         #   log("[recv corrupt packet]")
-          #  raise e
+        except (ValueError, KeyError, TypeError) as e:
+            log("[recv corrupt packet]")
+            raise e
     else:
         log("[error] timeout")
         sys.exit(-1)

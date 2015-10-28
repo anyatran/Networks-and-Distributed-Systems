@@ -179,13 +179,15 @@ class Sender(object):
         if data["sequence_number"] == self.last_byte_sent:
             log("[acked last byte sent]" + str(data["sequence_number"]))
             self.calc_cong_window_after_new_ack()
-            if ((data["next_byte_expected"] == -1) and all_data_acked()):
+            if (data["next_byte_expected"] == -1):
                 self.finished_transmitting = True
+                self.timers = {}
             else: 
                 while (self.acked_data[self.last_byte_sent]):
                     if self.last_byte_sent == self.last_byte - 1:
                         log("[finished transmitting]")
                         self.finished_transmitting = True
+                        self.timers = {}
                     self.last_byte_sent += 1
                 if not self.finished_transmitting:
                     self.send_untransmitted()

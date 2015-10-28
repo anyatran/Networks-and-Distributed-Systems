@@ -49,8 +49,7 @@ class Receiver(object):
     ## Send ACK message to the sender with sequence_number encoded in the specified format
     def send_ack(self, sequence_number):
         ack = True
-        checksum = self.digest_data([sequence_number, self.next_byte_expected, ack])
-        msg = struct.pack("!HlB16s", sequence_number, self.next_byte_expected, ack, checksum)
+        msg = struct.pack("!HlB", sequence_number, self.next_byte_expected, ack)
         if sock.sendto(msg, self.addr) < len(msg):
             log("[error] unable to fully send packet")
 

@@ -8,7 +8,6 @@ use Time::HiRes qw(time);
 use Sys::Hostname;
 
 my $DEBUG = 0;
-my $LIVE = 0;
 my $DATA_SIZE = 1000;
 my $TIMEOUT = 30;
 
@@ -20,15 +19,9 @@ if (! ((-e "3700send") && (-e "3700recv"))) {
   die("Error: Could not find executables");
 }
 
-if (! ((-x "3700send") && (-x "3700recv"))) {
-  die("Error: Executables are not executable.  Fix with 'chmod u+x 3700send 3700recv'.");
-}
-
 for ($i=0; $i<=$#ARGV; $i++) {
   if ($ARGV[$i] eq "--printlog") {
     $DEBUG = 1;
-  } elsif ($ARGV[$i] eq "--live") {
-    $LIVE = 1;
   } elsif ($ARGV[$i] eq "--size") {
     if ($ARGV[$i+1] eq "small") {
       $DATA_SIZE = 1000;
@@ -50,10 +43,6 @@ for ($i=0; $i<=$#ARGV; $i++) {
   } else {
     die("Error: Unrecognized option '$ARGV[$i]'");
   }
-}
-
-if ($DEBUG && $LIVE) {
-  die("Error: --printlog and --live should not be used together; just use one of them");
 }
 
 my $port = 0;
@@ -122,9 +111,6 @@ sub read_send_out {
   my $l = "";
   while(<SEND_OUT>) {
     $l .= "3700send: $_";
-    if ($LIVE) {
-      print "3700send: $_";
-    }
   }
   $log .= $l;
   threads->exit();
@@ -143,9 +129,6 @@ sub read_send_err {
   my $l = "";
   while(<SEND_ERR>) {
     $l .= "3700send: $_";
-    if ($LIVE) {
-      print "3700send: $_";
-    }
   }
   $log .= $l;
   threads->exit();
@@ -155,9 +138,6 @@ sub read_recv_err {
   my $l = "";
   while(<RECV_ERR>) {
     $l .= "3700recv: $_";
-    if ($LIVE) {
-      print "3700recv: $_";
-    }
   }  
   $log .= $l;
   threads->exit();

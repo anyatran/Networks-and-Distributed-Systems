@@ -166,8 +166,9 @@ def find_secret_flags(sock):
         ## Check for HTTP code
         code = check_code(get_res)
         #print code
-        if number_of_GET % 99 == 0:
+        if number_of_GET == 99:
             #print "999999999999999999999"
+            number_of_GET = 0
             break
         if code == 200:
             a_parser.feed(get_res)

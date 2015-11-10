@@ -1,58 +1,219 @@
-#!/usr/bin/python -u
-#
-# CS3700, Spring 2015
-# Project 4: Web crawler
-
-import socket
-import sys
+#!/usr/bin/python
+from sys import *
+from socket import *
 from HTMLParser import HTMLParser
-USERNAME = sys.argv[1]
-PASSWORD = sys.argv[2]
+import re
 
-ROOT = "http://fring.ccs.neu.edu/fakebook/"
-LOGIN_FORM= "http://fring.ccs.neu.edu/accounts/login/?next=/fakebook/"
-HOST = "fring.ccs.neu.edu"
-GET = "/robots.txt"
-YANDEX = "yandex.ru"
-ACCT = "/accounts/login/?next=/fakebook"
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
-s.connect((HOST, 80))
-class MyHTMLParser(HTMLParser):
+
+username = ""
+password = ""
+
+url = "fring.ccs.neu.edu"
+port = 80
+
+
+visited_urls = ["/fakebook/", "/fakebook"]
+urls_to_visit = []
+
+secret_flags = []
+
+session_id = ""
+
+number_of_GET = 0
+
+
+CSRF_token = ""
+CSRF_flag = False
+setrecursionlimit(5000)
+
+
+class ResponseHTMLParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
-        if tag == "input":    
-            print "Encountered an input tag:", tag
-    def handle_endtag(self, tag):
         if tag == "input":
-            print "Encountered an end input tag :", tag
+            for name, value in attrs:
+                global CSRF_token
+                global CSRF_flag
+                if CSRF_flag == True:
+                    CSRF_token = value
+                    CSRF_flag = False
+                if value == "csrfmiddlewaretoken":
+                    CSRF_flag = True
+
+class AHTMLParser(HTMLParser):
+    def handle_starttag(self, tag, attrs):
+        if tag == 'a':
+            for name, value in attrs:
+                if name == 'href':
+                    global visited_urls
+                    global urls_to_visit
+                    if re.search('/fakebook/', value) == None:
+                        return
+                    link = re.search('/fakebook/.*', value)
+                    link = link.group()
+                    
+                    if link not in visited_urls:
+                        urls_to_visit.append(link)
+                        return link
+                    else:
+                        return None
+
+class SecretFlagHTMLParser(HTMLParser):
+    is_tag = False
+    def handle_starttag(self, tag, attrs):
+        if tag == 'h2':
+            for name, value in attrs:
+                if name == 'class' and value == 'secret_flag':
+                    self.is_tag = True
     def handle_data(self, data):
-        if data == "Username:" or data == "Password:":
-            print "Encountered some data  :", data
-class WC(object):
-    def __init__(self):
-        self.html = ""
-        self.parser = MyHTMLParser()
+        global secret_flags
+        if self.is_tag == True:
+            flag = data[6:]
+            if flag not in secret_flags:
+                print "FOUND FLAG:" + flag
+                secret_flags.append(flag)
+            self.is_tag = False
 
-    # connect to the network
-    def connect(self, host, get):
-        s.send("GET %s HTTP/1.0\r\nHost: %s\r\nConnection: Keep-Alive\r\n\r\n" % (get, host)) #accept encoding
-        data = s.recv(1024)
-        print data
-        while len(data):
-            print self.html
-            self.html = self.html + data
-            data = s.recv(1024)
-        #s.close()
-        print self.html
-        #sys.exit(0)
-
-    def parse_html(self):
-        self.parser.feed(self.html)
+def crawl():
+    ## Socket connection
+    sock = socket(AF_INET, SOCK_STREAM)
+    sock.connect((url, port))
     
-    def login(self):
-        return 0
+    ## Get login response
+    login_res = get('/accounts/login/?next=/fakebook/', sock)
+    
+    ## Instance of HTMLParser for response
+    res_parser = ResponseHTMLParser()
+    
+    ## Get sesssion id
+    calc_session_id(login_res)
+    ## Feed login reponse to the parser
+    res_parser.feed(login_res)
+    
+    ## Get POST login response
+    post_res = post_login(sock)
+    calc_session_id(post_res)
+    
+    ## Look for secret flags
+    find_secret_flags(sock)
 
-def main():
-    wc = WC()
-    wc.connect(HOST, ACCT)
-    wc.parse_html()
-main()
+## Checks given response res for HTTP code and returns it
+def check_code(res):
+    global urls_to_visit
+    if "200 OK" in res:
+        return 200 
+    elif "500 INTERNAL SERVER ERROR" in res:
+        return 500 
+    elif "404 NOT FOUND" in res:
+        return 404 
+    elif "403 FORBIDDEN" in res:
+        return 403 
+    elif "301 MOVED" in res:
+        calc_session_id(res)
+        re_match = re.search(r'[.\s]*Location: .*', res)
+        if re_match == None:
+            return 301 
+        re_match = re_match.group()
+        re_match = re.search(r'\.edu/.*', ret)
+        if re_match == None:
+            return 301 
+        re_match = re_match.group()
+        length = len(re_match)
+        re_match = re_match[4:(length)]
+        if re_match not in urls_to_visit:
+            urls_to_visit.append(re_match)
+        return 301 
+    return 200 
+        
+## Prints secret flags if there are 5 of them
+def check_flags():
+    global secret_flags
+    if len(secret_flags) == 5:
+        for f in secret_flags:                
+            print f
+        exit()
+
+## Looks for secret flags
+def find_secret_flags(sock):
+    global urls_to_visit
+    global number_of_GET
+    global visited_urls
+
+    ## Get response from GET request
+    res = get('/fakebook/', sock)
+    ## Create an instance of HTML Parser for links
+    a_parser = AHTMLParser()
+    ## Feed response to parser
+    a_parser.feed(res)
+    
+    ## Create an instance of HTML Parser for secret flags
+    secret_flag_parser = SecretFlagHTMLParser()
+
+    for url in urls_to_visit:
+        ## Get response from GET request for given url
+        get_res = get(url, sock)
+        ## Check for HTTP code
+        code = check_code(get_res)
+        print code
+        if number_of_GET % 99 == 0:
+            print "999999999999999999999"
+            break
+        if code == 200:
+            a_parser.feed(get_res)
+            secret_flag_parser.feed(get_res)
+            if url in urls_to_visit:
+                urls_to_visit.remove(url)
+            visited_urls.append(url)
+        elif code == 500:
+            break
+        elif (code == 301 or code == 403 or code == 404):
+            urls_to_visit.remove(url)
+            continue
+        check_flags()
+    crawl()
+
+## Find sessionid in HTML
+def calc_session_id(res):
+    re_match = re.search(r'sessionid=[A-Za-z0-9]{32}', res)
+    if re_match != None:
+        global session_id
+        re_match = re_match.group()
+        print "session id "+ re_match
+        s_id = re_match[10:]
+        #s_id = s_id[0:(len(s_id))]
+        session_id = s_id
+
+## POST request to login page
+def post_login(sock):
+    global username
+    global password
+    global session_id
+    global CSRF_token
+    global CSRF_flag
+    message = "POST /accounts/login/?next=/fakebook/ HTTP/1.1\r\n" + "Host:fring.ccs.neu.edu:80\r\nReferer:http://fring.ccs.neu.edu/accounts/login/?next=/fakebook/\r\nCookie:csrftoken="+CSRF_token+"; sessionid="+session_id+"\r\nConnection:keep-alive\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 109\r\n\r\ncsrfmiddlewaretoken="+CSRF_token+"&username="+username+"&password="+password+"&next=%2Ffakebook%2F\r\n\r\n"
+    #print message
+    sock.sendall(message)
+    res = sock.recv(10000)
+    return res
+
+## GET request for given url
+def get(link, sock):
+    global number_of_GET
+    global CSRF_token
+    global session_id
+    global url
+    number_of_GET += 1
+    message = "GET " + link + " HTTP/1.1\r\nHost: " + url + "\r\nCookie: csrftoken=" + CSRF_token + "; sessionid=" + session_id + "\r\nConnection:keep-alive\r\n\r\n"
+    #print message
+    sock.sendall(message)
+    return sock.recv(10000)
+
+
+if __name__ == "__main__":
+    if len(argv) == 3:
+        global username
+        global password
+        username = argv[1]
+        password = argv[2]
+        crawl()
+    else:
+        print "Wrong format! Please type ./webcrawler username password"

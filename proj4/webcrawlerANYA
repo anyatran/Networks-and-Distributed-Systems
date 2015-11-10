@@ -1,0 +1,58 @@
+#!/usr/bin/python -u
+#
+# CS3700, Spring 2015
+# Project 4: Web crawler
+
+import socket
+import sys
+from HTMLParser import HTMLParser
+USERNAME = sys.argv[1]
+PASSWORD = sys.argv[2]
+
+ROOT = "http://fring.ccs.neu.edu/fakebook/"
+LOGIN_FORM= "http://fring.ccs.neu.edu/accounts/login/?next=/fakebook/"
+HOST = "fring.ccs.neu.edu"
+GET = "/robots.txt"
+YANDEX = "yandex.ru"
+ACCT = "/accounts/login/?next=/fakebook"
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
+s.connect((HOST, 80))
+class MyHTMLParser(HTMLParser):
+    def handle_starttag(self, tag, attrs):
+        if tag == "input":    
+            print "Encountered an input tag:", tag
+    def handle_endtag(self, tag):
+        if tag == "input":
+            print "Encountered an end input tag :", tag
+    def handle_data(self, data):
+        if data == "Username:" or data == "Password:":
+            print "Encountered some data  :", data
+class WC(object):
+    def __init__(self):
+        self.html = ""
+        self.parser = MyHTMLParser()
+
+    # connect to the network
+    def connect(self, host, get):
+        s.send("GET %s HTTP/1.0\r\nHost: %s\r\nConnection: Keep-Alive\r\n\r\n" % (get, host)) #accept encoding
+        data = s.recv(1024)
+        print data
+        while len(data):
+            print self.html
+            self.html = self.html + data
+            data = s.recv(1024)
+        #s.close()
+        print self.html
+        #sys.exit(0)
+
+    def parse_html(self):
+        self.parser.feed(self.html)
+    
+    def login(self):
+        return 0
+
+def main():
+    wc = WC()
+    wc.connect(HOST, ACCT)
+    wc.parse_html()
+main()

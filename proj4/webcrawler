@@ -46,11 +46,12 @@ class AHTMLParser(HTMLParser):
                 if name == 'href':
                     global visited_urls
                     global urls_to_visit
-                    if re.search('/fakebook/', value) == None:
+                    if re.search('/fakebook/', value) != None:
+                        link = re.search('/fakebook/.*', value)
+                        link = link.group()
+                    else:
                         return
-                    link = re.search('/fakebook/.*', value)
-                    link = link.group()
-                    
+                            
                     if link not in visited_urls:
                         urls_to_visit.append(link)
                         return link
@@ -58,21 +59,22 @@ class AHTMLParser(HTMLParser):
                         return None
 
 class SecretFlagHTMLParser(HTMLParser):
-    is_tag = False
+    is_secret_flag = False
     def handle_starttag(self, tag, attrs):
         if tag == 'h2':
             for name, value in attrs:
                 if name == 'class' and value == 'secret_flag':
-                    self.is_tag = True
+                    self.is_secret_flag = True
     def handle_data(self, data):
         global secret_flags
-        if self.is_tag == True:
+        if self.is_secret_flag == True:
             flag = data[6:]
             if flag not in secret_flags:
-                print "FOUND FLAG:" + flag
+                #print "FOUND FLAG:" + flag
                 secret_flags.append(flag)
-            self.is_tag = False
+            self.is_secret_flag = False
 
+## Crawl html pages
 def crawl():
     ## Socket connection
     sock = socket(AF_INET, SOCK_STREAM)
@@ -100,28 +102,38 @@ def crawl():
 def check_code(res):
     global urls_to_visit
     if "200 OK" in res:
-        return 200 
-    elif "500 INTERNAL SERVER ERROR" in res:
-        return 500 
-    elif "404 NOT FOUND" in res:
-        return 404 
-    elif "403 FORBIDDEN" in res:
-        return 403 
+        return 200
+
+    ## Redirect
     elif "301 MOVED" in res:
         calc_session_id(res)
+        ## Search for Location header
         re_match = re.search(r'[.\s]*Location: .*', res)
         if re_match == None:
-            return 301 
+            return 301
+
+        ## Find new URL 
         re_match = re_match.group()
         re_match = re.search(r'\.edu/.*', ret)
         if re_match == None:
             return 301 
         re_match = re_match.group()
-        length = len(re_match)
-        re_match = re_match[4:(length)]
+        #length = len(re_match)
+        re_match = re_match[4:]
         if re_match not in urls_to_visit:
             urls_to_visit.append(re_match)
-        return 301 
+        return 301
+
+    ## Abandon URLS
+    elif "404 NOT FOUND" in res:
+        return 404 
+    elif "403 FORBIDDEN" in res:
+        return 403
+
+    ## Retry request
+    elif "500 INTERNAL SERVER ERROR" in res:
+        return 500 
+     
     return 200 
         
 ## Prints secret flags if there are 5 of them
@@ -153,9 +165,9 @@ def find_secret_flags(sock):
         get_res = get(url, sock)
         ## Check for HTTP code
         code = check_code(get_res)
-        print code
+        #print code
         if number_of_GET % 99 == 0:
-            print "999999999999999999999"
+            #print "999999999999999999999"
             break
         if code == 200:
             a_parser.feed(get_res)
@@ -177,9 +189,8 @@ def calc_session_id(res):
     if re_match != None:
         global session_id
         re_match = re_match.group()
-        print "session id "+ re_match
+        #print "session id "+ re_match
         s_id = re_match[10:]
-        #s_id = s_id[0:(len(s_id))]
         session_id = s_id
 
 ## POST request to login page

@@ -39,6 +39,19 @@ class ResponseHTMLParser(HTMLParser):
                 if value == "csrfmiddlewaretoken":
                     CSRF_flag = True
 
+class SessionHTMLParser(HTMLParser):
+    def handle_starttag(self, tag, attrs):
+        for name, value in attrs:
+            print name, value
+            re_match = re.search(r'sessionid=[A-Za-z0-9]{32}', value)
+            print re_match
+            if re_match != None:
+                global session_id
+                re_match = re_match.group()
+                #print "session id "+ re_match
+                s_id = re_match[10:]
+                session_id = s_id
+
 class AHTMLParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag == 'a':
@@ -85,9 +98,10 @@ def crawl():
     
     ## Instance of HTMLParser for response
     res_parser = ResponseHTMLParser()
-    
+    sesssion_parser = SessionHTMLParser()
     ## Get sesssion id
-    calc_session_id(login_res)
+    sesssion_parser.feed(login_res)
+    ##calc_session_id(login_res)
     ## Feed login reponse to the parser
     res_parser.feed(login_res)
     

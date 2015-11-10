@@ -3,56 +3,154 @@
 # CS3700, Spring 2015
 # Project 4: Web crawler
 
+import urlparse
 import socket
+import json
 import sys
 from HTMLParser import HTMLParser
-USERNAME = sys.argv[1]
-PASSWORD = sys.argv[2]
+#USERNAME = sys.argv[1]
+#PASSWORD = sys.argv[2]
 
-ROOT = "http://fring.ccs.neu.edu/fakebook/"
-LOGIN_FORM= "http://fring.ccs.neu.edu/accounts/login/?next=/fakebook/"
 HOST = "fring.ccs.neu.edu"
-GET = "/robots.txt"
-YANDEX = "yandex.ru"
-ACCT = "/accounts/login/?next=/fakebook"
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
+FAKEBOOK = "/fakebook/"
+LOGIN = "/accounts/login/?next=/fakebook/"
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.connect((HOST, 80))
+
 class MyHTMLParser(HTMLParser):
-    def handle_starttag(self, tag, attrs):
-        if tag == "input":    
-            print "Encountered an input tag:", tag
-    def handle_endtag(self, tag):
+    def __init__(self):
+        HTMLParser.__init__(self)
+        self.token = ""
+        self.next_path = ""
+
+    # get the next path in input tag
+    def handle_starttag(self, tag, attr):
+        next_found = False
         if tag == "input":
-            print "Encountered an end input tag :", tag
-    def handle_data(self, data):
-        if data == "Username:" or data == "Password:":
-            print "Encountered some data  :", data
+            for attr in attrs:
+                if attr[1] == "next":
+                    next_found = True
+                if next_found and attr[0] == "value":
+                    self.next_path = attr[1]
+                    next_found = False
+
 class WC(object):
     def __init__(self):
-        self.html = ""
+        self.token = ""
+        self.sessionid = ""
         self.parser = MyHTMLParser()
-
-    # connect to the network
-    def connect(self, host, get):
-        s.send("GET %s HTTP/1.0\r\nHost: %s\r\nConnection: Keep-Alive\r\n\r\n" % (get, host)) #accept encoding
+        self.status = ""
+        
+    def set_cookie(self):
+        cookie = ""
+        if self.token != "":
+            cookie = cookie + "csrftoken=%s; " % self.token
+        if self.sessionid != "":
+            cookie = cookie + "sessionid=%s" % self.sessionid
+        if cookie != "":
+            cookie = "Cookie: " + cookie + "\r\n"
+        return cookie
+    #GET REQUEST
+    def get_request(self, path, host):
+        get_header = "GET %s HTTP/1.0\r\n" % path
+        host_header = "Host: %s\r\n" % host
+        connection_header = "Connection: Keep-Alive\r\n"
+        cookie_header = self.set_cookie()
+        accept_header = "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8\r\n"
+        
+        header = get_header + host_header + connection_header + cookie_header + accept_header + "\r\n"
+        print "===> REQUEST: %s" % header
+        s.send(header)
         data = s.recv(1024)
-        print data
+        response = ""
         while len(data):
-            print self.html
-            self.html = self.html + data
+            response = response + data
             data = s.recv(1024)
-        #s.close()
-        print self.html
-        #sys.exit(0)
+        print response
+        self.process_response(response)
 
-    def parse_html(self):
-        self.parser.feed(self.html)
+    # split response into head and body
+    def process_response(self, response):
+        print "response: %s" % response
+        response_split = response.split("\r\n\r\n")
+        head_str = response_split[0]
+        body_str = response_split[1]
+        header = self.process_header(head_str)
+        print "=====>HEADER\n %s" % json.dumps(header)
+        print "=====>BODY\n %s" % body_str
+        if "302" in header["status"]: #redirect
+            print "found and redirect"
+            self.redirect(header["Location"])
+        elif "301" in header["status"]:
+            print "moved permanently"
+            self.redirect(header["Location"])
+        elif "500" in header["status"]:
+            #retry
+            print "retry"
+        elif "403" in header["status"]:
+            print "forbidden"
+        elif "404" in header["status"]:
+            print "not found"
+        elif "200" in header["status"]:
+            print "OK"
+
+    def redirect(self, url):
+        url_parsed = urlparse.urlsplit(url)
+        path = url_parsed[2] + url_parsed[3]
+        host = url_parsed[1]
+        print "path: %s, host: %s" % (path, host)
+        self.get_request(path, host)
+
+    def process_header(self, header_str):
+        header_result = {}
+        header_pairs = header_str.split("\r\n")
+        for header in header_pairs:
+            if "HTTP/1." in header:
+                header_result["status"] = header
+            else:
+                header_split = header.split(": ")
+                if header_split[0] == "Set-Cookie":
+                    self.parse_cookie(header_split[1], header_result)
+                else:
+                    header_result[header_split[0]] = header_split[1]
+        return header_result
+
+    def parse_cookie(self, contents, header):
+        if "csrftoken" in contents:
+            sp = contents.split("csrftoken=")[1]
+            token = sp.split("; ")[0]
+            header["csrftoken"] = token
+            self.token = token
+        if "sessionid" in contents:
+            sp = contents.split("sessionid=")[1]
+            sessionid = sp.split("; ")[0]
+            header["sessionid"] = sessionid
+            self.sessionid = sessionid
     
-    def login(self):
-        return 0
+    def login(self, path, host):
+        url = urlparse.urlsplit("http://" + host + path)
+        query = url[3]
+        print "LOGGIN IN \n"
+        body = "username=001959524&password=OT91JXUU&csrfmiddlewaretoken=%s&%s" % (self.token, query)
+        print "BODYi %s" % body
+        post_head = "POST %s HTTP/1.0\r\n" % path
+        host_head = "Host: %s\r\n" % host
+        connection_head = "Connection: Keep-Alive\r\n"
+        content_type_head = "Content-Type: application/x-www-form-urlencoded\r\n"
+        content_length_head = "Content-Length: %s\r\n" % str(len(body))
+        cookie_head = "Cookie: csrftoken=%s; sessionid=%s\r\n" % (self.token, self.sessionid)
+        request = post_head + host_head + connection_head + content_type_head + content_length_head + cookie_head + "\r\n" + body
+        s.send(request)
+        data = s.recv(1024)
+        result = ""
+        while len(data):
+            resutlt = result + data
+            data = s.recv(1024)
+        print result
 
 def main():
     wc = WC()
-    wc.connect(HOST, ACCT)
-    wc.parse_html()
+    wc.get_request(LOGIN, HOST)
+    wc.login(LOGIN, HOST)
+
 main()

@@ -51,24 +51,23 @@ class WC(object):
             cookie = "Cookie: " + cookie + "\r\n"
         return cookie
     #GET REQUEST
-    def get_request(self, path, host):
-        get_header = "GET %s HTTP/1.0\r\n" % path
+    def get_request(self, path, host, sock):
+        get_header = "GET %s HTTP/1.1\r\n" % path
         host_header = "Host: %s\r\n" % host
         connection_header = "Connection: Keep-Alive\r\n"
         cookie_header = self.set_cookie()
-        accept_header = "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8\r\n"
         
-        header = get_header + host_header + connection_header + cookie_header + accept_header + "\r\n"
+        header = get_header + host_header + connection_header + cookie_header + "\r\n"
         print "===> REQUEST: %s" % header
-        s.send(header)
-        data = s.recv(1024)
+        sock.sendall(header)
+        data = sock.recv(10000)
         response = ""
         while len(data):
             response = response + data
-            data = s.recv(1024)
+            data = sock.recv(1024)
         print response
         self.process_response(response)
-
+        
     # split response into head and body
     def process_response(self, response):
         print "response: %s" % response
@@ -127,30 +126,30 @@ class WC(object):
             header["sessionid"] = sessionid
             self.sessionid = sessionid
     
-    def login(self, path, host):
-        url = urlparse.urlsplit("http://" + host + path)
-        query = url[3]
+    def login(self, path, host, sock):
         print "LOGGIN IN \n"
-        body = "username=001959524&password=OT91JXUU&csrfmiddlewaretoken=%s&%s" % (self.token, query)
-        print "BODYi %s" % body
-        post_head = "POST %s HTTP/1.0\r\n" % path
-        host_head = "Host: %s\r\n" % host
+        body = "csrfmiddlewaretoken=%s&username=001959524&password=OT91JXUU&next=/fakebook/" % (self.token)
+        post_head = "POST %s HTTP/1.1\r\n" % path
+        host_head = "Host: %s:80\r\n" % host
         connection_head = "Connection: Keep-Alive\r\n"
         content_type_head = "Content-Type: application/x-www-form-urlencoded\r\n"
         content_length_head = "Content-Length: %s\r\n" % str(len(body))
         cookie_head = "Cookie: csrftoken=%s; sessionid=%s\r\n" % (self.token, self.sessionid)
-        request = post_head + host_head + connection_head + content_type_head + content_length_head + cookie_head + "\r\n" + body
-        s.send(request)
-        data = s.recv(1024)
+        referer_head = "Referer:http://fring.ccs.neu.edu/accounts/login/?next=/fakebook/\r\n"
+        request = post_head + host_head + connection_head + content_type_head + referer_head + content_length_head + cookie_head + "\r\n" + body + "\r\n\r\n"
+        print "POST REQ: %s" % request
+        sock.sendall(request)
+        data = sock.recv(10000)
         result = ""
         while len(data):
             resutlt = result + data
-            data = s.recv(1024)
-        print result
+            data = sock.recv(10000)
+        print "RESULT: %s" %data
+        return result
 
 def main():
     wc = WC()
-    wc.get_request(LOGIN, HOST)
-    wc.login(LOGIN, HOST)
+    wc.get_request(LOGIN, HOST, s)
+    wc.login(LOGIN, HOST, s)
 
 main()

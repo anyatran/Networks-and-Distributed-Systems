@@ -56,21 +56,27 @@ class SecretFlagHTMLParser(HTMLParser):
             self.is_secret_flag = False
 
 ## Crawl html pages
-def crawl():
+def login_init():
     ## Socket connection
     sock = socket(AF_INET, SOCK_STREAM)
     sock.connect((url, port))
-    
+
     ## Get login response
     login_res = get('/accounts/login/?next=/fakebook/', sock)
-    
+
     ## Get sesssion id
     calc_session_id(login_res)
-    
+
     ## Get POST login response
     post_res = post_login(sock)
     calc_session_id(post_res)
-    
+    sock.close() 
+    crawl()
+
+def crawl():
+    ## SockVet connection
+    sock = socket(AF_INET, SOCK_STREAM)
+    sock.connect((url, port))
     ## Look for secret flags
     find_secret_flags(sock)
 
@@ -158,6 +164,7 @@ def find_secret_flags(sock):
             urls_to_visit.remove(url)
             continue
         check_flags()
+    sock.close()
     crawl()
 
 ## Find sessionid in HTML
@@ -211,6 +218,6 @@ if __name__ == "__main__":
         global password
         username = argv[1]
         password = argv[2]
-        crawl()
+        login_init()
     else:
         print "Wrong format! Please type ./webcrawler username password"

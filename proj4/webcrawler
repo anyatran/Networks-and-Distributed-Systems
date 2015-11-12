@@ -82,18 +82,20 @@ def crawl():
     
     ## Get login response
     login_res = get('/accounts/login/?next=/fakebook/', sock)
+    print "GET: " + login_res
     
     ## Instance of HTMLParser for response
-    res_parser = ResponseHTMLParser()
+    #res_parser = ResponseHTMLParser()
     
     ## Get sesssion id
     calc_session_id(login_res)
     ## Feed login reponse to the parser
-    res_parser.feed(login_res)
+    #res_parser.feed(login_res)
     
     ## Get POST login response
     post_res = post_login(sock)
     calc_session_id(post_res)
+    print "POST: " + post_res
     
     ## Look for secret flags
     find_secret_flags(sock)
@@ -105,7 +107,8 @@ def check_code(res):
         return 200
 
     ## Redirect
-    elif "301 MOVED" in res:
+    elif "301 MOVED" in res or "302 FOUND" in res:
+        print res
         calc_session_id(res)
         ## Search for Location header
         re_match = re.search(r'[.\s]*Location: .*', res)
@@ -113,13 +116,18 @@ def check_code(res):
             return 301
 
         ## Find new URL 
+
         re_match = re_match.group()
-        re_match = re.search(r'\.edu/.*', ret)
+        print re_match
+        if ":80" in res:
+            re_match = re.search(r'\.edu:80/.*', res)
+            print re_match
+        
         if re_match == None:
             return 301 
         re_match = re_match.group()
         #length = len(re_match)
-        re_match = re_match[4:]
+        re_match = re_match[7:]
         if re_match not in urls_to_visit:
             urls_to_visit.append(re_match)
         return 301
@@ -149,9 +157,11 @@ def find_secret_flags(sock):
     global urls_to_visit
     global number_of_GET
     global visited_urls
-
+    print "find flags"
     ## Get response from GET request
     res = get('/fakebook/', sock)
+    print "fakebook/ " + str(check_code(res))
+    print res
     ## Create an instance of HTML Parser for links
     a_parser = AHTMLParser()
     ## Feed response to parser
@@ -161,37 +171,50 @@ def find_secret_flags(sock):
     secret_flag_parser = SecretFlagHTMLParser()
 
     for url in urls_to_visit:
+        print url
+
         ## Get response from GET request for given url
         get_res = get(url, sock)
         ## Check for HTTP code
         code = check_code(get_res)
         #print code
-        if number_of_GET == 99:
-            #print "999999999999999999999"
-            number_of_GET = 0
-            break
+        #if number_of_GET == 99:
+        #    print "999999999999999999999"
+            #number_of_GET = 0
+        #    break
         if code == 200:
             a_parser.feed(get_res)
             secret_flag_parser.feed(get_res)
             if url in urls_to_visit:
                 urls_to_visit.remove(url)
             visited_urls.append(url)
+            check_flags()
         elif code == 500:
-            break
+            print "500"
+            #adding that url to the end of the queue
+            urls_to_visit.remove(url)
+            urls_to_visit.append(url)
         elif (code == 301 or code == 403 or code == 404):
+            print code
             urls_to_visit.remove(url)
             continue
-        check_flags()
-    crawl()
+        #check_flags()
+    #crawl()
 
 ## Find sessionid in HTML
 def calc_session_id(res):
-    re_match = re.search(r'sessionid=[A-Za-z0-9]{32}', res)
-    if re_match != None:
+    s_match = re.search(r'sessionid=[A-Za-z0-9]{32}', res)
+    c_match = re.search(r'csrftoken=[A-Za-z0-9]{32}', res)
+    if c_match != None:
+        global CSRF_token
+        c_match = c_match.group()
+        c_tok = c_match[10:]
+        CSRF_token = c_tok
+    if s_match != None:
         global session_id
-        re_match = re_match.group()
+        s_match = s_match.group()
         #print "session id "+ re_match
-        s_id = re_match[10:]
+        s_id = s_match[10:]
         session_id = s_id
 
 ## POST request to login page

@@ -18,7 +18,6 @@ CSRF_token = ""
 secret_flags = []
 session_id = ""
 number_of_GET = 0
-setrecursionlimit(5000)
 
 class AHTMLParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
@@ -51,7 +50,7 @@ class SecretFlagHTMLParser(HTMLParser):
         if self.is_secret_flag == True:
             flag = data[6:]
             if flag not in secret_flags:
-                print "FOUND FLAG:" + flag
+                #print "FOUND FLAG:" + flag
                 secret_flags.append(flag)
             self.is_secret_flag = False
 
@@ -94,7 +93,6 @@ def check_code(res):
         if re_match == None:
             return 301 
         re_match = re_match.group()
-        #length = len(re_match)
         re_match = re_match[4:]
         if re_match not in urls_to_visit:
             urls_to_visit.append(re_match)
@@ -207,8 +205,8 @@ def get(link, sock):
 
 if __name__ == "__main__":
     if len(argv) == 3:
-        global username
-        global password
+        #global username
+        #global password
         username = argv[1]
         password = argv[2]
         crawl()

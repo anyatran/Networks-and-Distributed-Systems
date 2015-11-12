@@ -9,7 +9,8 @@ username = ""
 password = ""
 url = "fring.ccs.neu.edu"
 port = 80
-
+CSRF_token=""
+CSRF_flag = False
 
 visited_urls = ["/fakebook/", "/fakebook"]
 urls_to_visit = []
@@ -20,9 +21,6 @@ session_id = ""
 
 number_of_GET = 0
 
-
-CSRF_token = ""
-CSRF_flag = False
 setrecursionlimit(5000)
 
 
@@ -167,7 +165,7 @@ def find_secret_flags(sock):
     a_parser.feed(res)
     ## Create an instance of HTML Parser for secret flags
     secret_flag_parser = SecretFlagHTMLParser()
-    check_flags()
+    #check_flags()
     for url in urls_to_visit:
         print url
 
@@ -224,12 +222,7 @@ def post_login(sock):
     global session_id
     global CSRF_token
     global CSRF_flag
-    message = "POST /accounts/login/?next=/fakebook/ HTTP/1.1\r\n" + 
-    "Host:fring.ccs.neu.edu:80\r\n" + "
-    "Referer:http://fring.ccs.neu.edu/accounts/login/?next=/fakebook/\r\n" + "
-    "Cookie:csrftoken="+CSRF_token+"; sessionid="+session_id+"\r\n" + 
-    "Connection:keep-alive\r\n" + 
-    "Content-Type: application/x-www-form-urlencoded\r\nContent-Length: 109\r\n\r\ncsrfmiddlewaretoken="+CSRF_token+"&username="+username+"&password="+password+"&next=%2Ffakebook%2F\r\n\r\n"
+    message = "POST /accounts/login/?next=/fakebook/ HTTP/1.1\r\n" + "Host:fring.ccs.neu.edu:80\r\nReferer: http://fring.ccs.neu.edu/accounts/login/?next=/fakebook/\r\nCookie:csrftoken="+CSRF_token+"; sessionid="+session_id+"\r\nConnection:keep-alive\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 109\r\n\r\ncsrfmiddlewaretoken="+CSRF_token+"&username="+username+"&password="+password+"&next=%2Ffakebook%2F\r\n\r\n"
     #print message
     sock.sendall(message)
     res = sock.recv(10000)

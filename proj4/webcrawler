@@ -32,11 +32,11 @@ class ResponseHTMLParser(HTMLParser):
             for name, value in attrs:
                 global CSRF_token
                 global CSRF_flag
+                if value == "csrfmiddlewaretoken":
+                    CSRF_flag = True
                 if CSRF_flag == True:
                     CSRF_token = value
                     CSRF_flag = False
-                if value == "csrfmiddlewaretoken":
-                    CSRF_flag = True
 
 class AHTMLParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
@@ -60,8 +60,8 @@ class SecretFlagHTMLParser(HTMLParser):
     is_secret_flag = False
     def handle_starttag(self, tag, attrs):
         if tag == 'h2':
-            for name, value in attrs:
-                if name == 'class' and value == 'secret_flag':
+            for prop, value in attrs:
+                if prop == 'class' and value == 'secret_flag':
                     self.is_secret_flag = True
     def handle_data(self, data):
         global secret_flags
@@ -167,7 +167,7 @@ def find_secret_flags(sock):
     a_parser.feed(res)
     ## Create an instance of HTML Parser for secret flags
     secret_flag_parser = SecretFlagHTMLParser()
-
+    check_flags()
     for url in urls_to_visit:
         print url
 
@@ -224,7 +224,12 @@ def post_login(sock):
     global session_id
     global CSRF_token
     global CSRF_flag
-    message = "POST /accounts/login/?next=/fakebook/ HTTP/1.1\r\n" + "Host:fring.ccs.neu.edu:80\r\nReferer:http://fring.ccs.neu.edu/accounts/login/?next=/fakebook/\r\nCookie:csrftoken="+CSRF_token+"; sessionid="+session_id+"\r\nConnection:keep-alive\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 109\r\n\r\ncsrfmiddlewaretoken="+CSRF_token+"&username="+username+"&password="+password+"&next=%2Ffakebook%2F\r\n\r\n"
+    message = "POST /accounts/login/?next=/fakebook/ HTTP/1.1\r\n" + 
+    "Host:fring.ccs.neu.edu:80\r\n" + "
+    "Referer:http://fring.ccs.neu.edu/accounts/login/?next=/fakebook/\r\n" + "
+    "Cookie:csrftoken="+CSRF_token+"; sessionid="+session_id+"\r\n" + 
+    "Connection:keep-alive\r\n" + 
+    "Content-Type: application/x-www-form-urlencoded\r\nContent-Length: 109\r\n\r\ncsrfmiddlewaretoken="+CSRF_token+"&username="+username+"&password="+password+"&next=%2Ffakebook%2F\r\n\r\n"
     #print message
     sock.sendall(message)
     res = sock.recv(10000)

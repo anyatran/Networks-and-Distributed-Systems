@@ -7,7 +7,6 @@ import re
 
 username = ""
 password = ""
-
 url = "fring.ccs.neu.edu"
 port = 80
 
@@ -76,15 +75,16 @@ class SecretFlagHTMLParser(HTMLParser):
 
 ## Crawl html pages
 def crawl():
+
     ## Socket connection
     sock = socket(AF_INET, SOCK_STREAM)
     sock.connect((url, port))
-    
     ## Get login response
     login_res = get('/accounts/login/?next=/fakebook/', sock)
     print "GET: " + login_res
     
     ## Instance of HTMLParser for response
+
     #res_parser = ResponseHTMLParser()
     
     ## Get sesssion id
@@ -166,7 +166,6 @@ def find_secret_flags(sock):
     a_parser = AHTMLParser()
     ## Feed response to parser
     a_parser.feed(res)
-    
     ## Create an instance of HTML Parser for secret flags
     secret_flag_parser = SecretFlagHTMLParser()
 
@@ -194,12 +193,14 @@ def find_secret_flags(sock):
             #adding that url to the end of the queue
             urls_to_visit.remove(url)
             urls_to_visit.append(url)
+            #break
         elif (code == 301 or code == 403 or code == 404):
             print code
             urls_to_visit.remove(url)
             continue
         #check_flags()
     #crawl()
+
 
 ## Find sessionid in HTML
 def calc_session_id(res):

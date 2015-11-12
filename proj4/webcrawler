@@ -1,10 +1,10 @@
 #!/usr/bin/python
 from sys import *
-import socket
-import HTMLParser
-import zlib
+from socket import *
+from HTMLParser import HTMLParser
+import gzip
 import re
-
+from StringIO import StringIO
 
 username = ""
 password = ""
@@ -39,7 +39,6 @@ class ResponseHTMLParser(HTMLParser):
                     CSRF_flag = False
                 if value == "csrfmiddlewaretoken":
                     CSRF_flag = True
-
 class AHTMLParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag == 'a':
@@ -85,12 +84,12 @@ def crawl():
     login_res = get('/accounts/login/?next=/fakebook/', sock)
     
     ## Instance of HTMLParser for response
-    res_parser = ResponseHTMLParser()
+    #res_parser = ResponseHTMLParser()
     
     ## Get sesssion id
-    calc_session_id(login_res)
+    #calc_session_id(login_res)
     ## Feed login reponse to the parser
-    res_parser.feed(login_res)
+    #res_parser.feed(login_res)
     
     ## Get POST login response
     post_res = post_login(sock)
@@ -169,6 +168,7 @@ def find_secret_flags(sock):
         #print code
         if number_of_GET % 99 == 0:
             #print "999999999999999999999"
+            number_of_GET = 0
             break
         if code == 200:
             a_parser.feed(get_res)
@@ -186,12 +186,18 @@ def find_secret_flags(sock):
 
 ## Find sessionid in HTML
 def calc_session_id(res):
-    re_match = re.search(r'sessionid=[A-Za-z0-9]{32}', res)
-    if re_match != None:
+    s_match = re.search(r'sessionid=[A-Za-z0-9]{32}', res)
+    c_match = re.search(r'csrftoken=[A-Za-z0-9]{32}', res)
+    if c_match != None:
+        global CSRF_token
+        c_match = c_match.group()
+        c_tok = c_match[10:]
+        CSRF_token = c_tok
+    if s_match != None:
         global session_id
-        re_match = re_match.group()
+        s_match = s_match.group()
         #print "session id "+ re_match
-        s_id = re_match[10:]
+        s_id = s_match[10:]
         session_id = s_id
 
 ## POST request to login page
@@ -202,11 +208,11 @@ def post_login(sock):
     global CSRF_token
     global CSRF_flag
     body = "csrfmiddlewaretoken="+CSRF_token+"&username="+username+"&password="+password+"&next=%2Ffakebook%2F"
-    message = "POST /accounts/login/?next=/fakebook/ HTTP/1.1\r\n" + "Host:fring.ccs.neu.edu:80\r\nReferer:http://fring.ccs.neu.edu/accounts/login/?next=/fakebook/\r\nCookie:csrftoken="+CSRF_token+"; sessionid="+session_id+"\r\nConnection:keep-alive\r\nContent-Type: application/x-www-form-urlencoded\r\nAccept-Encoding: gzip\r\nContent-Length: " +str(len(body)) + "\r\n\r\n" + body + "\r\n\r\n"
+    message = "POST /accounts/login/?next=/fakebook/ HTTP/1.1\r\n" + "Host:fring.ccs.neu.edu:80\r\nReferer:http://fring.ccs.neu.edu/accounts/login/?next=/fakebook/\r\nCookie:csrftoken="+CSRF_token+"; sessionid="+session_id+"\r\nConnection:keep-alive\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: " +str(len(body)) + "\r\n\r\n" + body + "\r\n"
     print message
     sock.sendall(message)
     res = sock.recv(10000)
-    print res
+    calc_session_id(res)
     return res
 
 ## GET request for given url
@@ -219,7 +225,9 @@ def get(link, sock):
     message = "GET " + link + " HTTP/1.1\r\nHost: " + url + "\r\nCookie: csrftoken=" + CSRF_token + "; sessionid=" + session_id + "\r\nConnection:keep-alive\r\n\r\n"
     #print message
     sock.sendall(message)
-    return sock.recv(10000)
+    res = sock.recv(10000)
+    calc_session_id(res)
+    return res
 
 
 if __name__ == "__main__":

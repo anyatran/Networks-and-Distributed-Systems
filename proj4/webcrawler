@@ -1,7 +1,8 @@
 #!/usr/bin/python
 from sys import *
-from socket import *
-from HTMLParser import HTMLParser
+import socket
+import HTMLParser
+import zlib
 import re
 
 
@@ -105,7 +106,7 @@ def check_code(res):
         return 200
 
     ## Redirect
-    elif "301 MOVED" in res:
+    elif "301 MOVED" in res or "302 FOUND" in res:
         calc_session_id(res)
         ## Search for Location header
         re_match = re.search(r'[.\s]*Location: .*', res)
@@ -114,7 +115,7 @@ def check_code(res):
 
         ## Find new URL 
         re_match = re_match.group()
-        re_match = re.search(r'\.edu/.*', ret)
+        re_match = re.search(r'\.edu/.*', res)
         if re_match == None:
             return 301 
         re_match = re_match.group()
@@ -200,10 +201,12 @@ def post_login(sock):
     global session_id
     global CSRF_token
     global CSRF_flag
-    message = "POST /accounts/login/?next=/fakebook/ HTTP/1.1\r\n" + "Host:fring.ccs.neu.edu:80\r\nReferer:http://fring.ccs.neu.edu/accounts/login/?next=/fakebook/\r\nCookie:csrftoken="+CSRF_token+"; sessionid="+session_id+"\r\nConnection:keep-alive\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 109\r\n\r\ncsrfmiddlewaretoken="+CSRF_token+"&username="+username+"&password="+password+"&next=%2Ffakebook%2F\r\n\r\n"
-    #print message
+    body = "csrfmiddlewaretoken="+CSRF_token+"&username="+username+"&password="+password+"&next=%2Ffakebook%2F"
+    message = "POST /accounts/login/?next=/fakebook/ HTTP/1.1\r\n" + "Host:fring.ccs.neu.edu:80\r\nReferer:http://fring.ccs.neu.edu/accounts/login/?next=/fakebook/\r\nCookie:csrftoken="+CSRF_token+"; sessionid="+session_id+"\r\nConnection:keep-alive\r\nContent-Type: application/x-www-form-urlencoded\r\nAccept-Encoding: gzip\r\nContent-Length: " +str(len(body)) + "\r\n\r\n" + body + "\r\n\r\n"
+    print message
     sock.sendall(message)
     res = sock.recv(10000)
+    print res
     return res
 
 ## GET request for given url

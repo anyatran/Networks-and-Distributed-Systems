@@ -12,33 +12,14 @@ password = ""
 url = "fring.ccs.neu.edu"
 port = 80
 
-
 visited_urls = ["/fakebook/", "/fakebook"]
 urls_to_visit = []
-
-secret_flags = []
-
-session_id = ""
-
-number_of_GET = 0
-
-
 CSRF_token = ""
-CSRF_flag = False
+secret_flags = []
+session_id = ""
+number_of_GET = 0
 setrecursionlimit(5000)
 
-
-class ResponseHTMLParser(HTMLParser):
-    def handle_starttag(self, tag, attrs):
-        if tag == "input":
-            for name, value in attrs:
-                global CSRF_token
-                global CSRF_flag
-                if CSRF_flag == True:
-                    CSRF_token = value
-                    CSRF_flag = False
-                if value == "csrfmiddlewaretoken":
-                    CSRF_flag = True
 class AHTMLParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag == 'a':
@@ -83,13 +64,8 @@ def crawl():
     ## Get login response
     login_res = get('/accounts/login/?next=/fakebook/', sock)
     
-    ## Instance of HTMLParser for response
-    #res_parser = ResponseHTMLParser()
-    
     ## Get sesssion id
-    #calc_session_id(login_res)
-    ## Feed login reponse to the parser
-    #res_parser.feed(login_res)
+    calc_session_id(login_res)
     
     ## Get POST login response
     post_res = post_login(sock)
@@ -206,13 +182,12 @@ def post_login(sock):
     global password
     global session_id
     global CSRF_token
-    global CSRF_flag
     body = "csrfmiddlewaretoken="+CSRF_token+"&username="+username+"&password="+password+"&next=%2Ffakebook%2F"
     message = "POST /accounts/login/?next=/fakebook/ HTTP/1.1\r\n" + "Host:fring.ccs.neu.edu:80\r\nReferer:http://fring.ccs.neu.edu/accounts/login/?next=/fakebook/\r\nCookie:csrftoken="+CSRF_token+"; sessionid="+session_id+"\r\nConnection:keep-alive\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: " +str(len(body)) + "\r\n\r\n" + body + "\r\n"
-    print message
+    #print message
     sock.sendall(message)
     res = sock.recv(10000)
-    calc_session_id(res)
+    #calc_session_id(res)
     return res
 
 ## GET request for given url
@@ -226,7 +201,7 @@ def get(link, sock):
     #print message
     sock.sendall(message)
     res = sock.recv(10000)
-    calc_session_id(res)
+    #calc_session_id(res)
     return res
 
 

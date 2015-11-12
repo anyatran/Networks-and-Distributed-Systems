@@ -1,0 +1,43 @@
+Project 4: Web Crawler
+Yulia Zileeva and Anya Tran
+
+High Level approach
+
+	Our code has the following main functions:
+
+	get - creates GET request header and sends it over socket
+		GET Header:
+	    GET [url] HTTP/1.1
+	    Host: [url]
+	    Cookie: csrftoken=[CSRF_token]; sessionid=[session_id]
+	    Connection:keep-alive
+
+    post - creates POST request header and sends it over socket
+		POST Header:
+		POST /accounts/login/?next=/fakebook/ HTTP/1.1
+		Host:fring.ccs.neu.edu:80
+		Referer:http://fring.ccs.neu.edu/accounts/login/?next=/fakebook/
+		Cookie:csrftoken=[CSRF_token]; sessionid=[session_id] 
+		Connection:keep-alive
+		Content-Type: application/x-www-form-urlencoded
+		Content-Length: 109
+		csrfmiddlewaretoken=[CSRF_token]&username=[username]&password=[password]&next=/fakebook/
+
+    find_secret_flags - loops over urls that need visit, checks HTTP code, and checks if we have 5 secret flags
+	    if 200 - we parse response from the request and add that url to visited_urls
+	    if 500 - break from the loop and restart connection
+	    if 301, 302, 403, 404 - remove that url from urls to visit
+
+	check_code - checks HTTP response for codes 200, 500, 404, 403, 302, 301
+
+	crawl - sets up the socket connection, makes GET and POST requests to login page, parses responses, finds CSRF_token, urls to visit, session id.
+
+Challenges
+	We faced challenges while using new for us python libraries like HTMLParser. It was not clear at first how to use HTMLParser classes and its functions to parse out HTMLs and find tags that we need. 
+
+	Also, socket connection kept timing out for no reason. We couldn't figure out why - there was a lot of things that could cause it. It seemed like it was able to keep connection alive for long time and needed connection reset and login again.
+
+Testing
+	We tested our code by running it on fakebook site. We used inspect element browser feature to see how necessary tags look like and how to access them - csrfmiddlewaretoken, a href, secret_flag. We tried differnet headers in out requests
+
+

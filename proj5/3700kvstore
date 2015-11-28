@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, socket, select, time, json, random
+import sys, socket, random, select, time, json, random
 
 # Your ID number
 my_id = sys.argv[1]
@@ -29,6 +29,7 @@ class Replica(object):
         self.datastore = {}
         self.voted_for = -1
         self.last_heartbeat = time.time()
+        self.election_timeout = random.uniform(0.15, 0.3)
         # for leaders
         self.next_index = [] # for each server, index of the next log entry to send to that server. Init to leader last lof index + 1
         self.match_index = [] # for each server, index of highest log entry known to be replicated on server. init to 0 then i++
@@ -74,31 +75,39 @@ class Replica(object):
             response = {"src": self.my_id, "dst": request["src"], "term": self.term, "type": "vote_result", "vote": "yes"}
             sock.send(json.dumps(response) + "\n")
 
-    def handle_log(self, msg):
-        return 0
-
     def redirect(self, msg):
         print "in redirect"
         redirect_msg = {"src": self.my_id, "dst": msg["src"], "MID": msg["MID"], "leader": self.leader, "type": "redirect"}
         print "====> REDIRECT: %s" % json.dumps(redirect_msg)
         sock.send(json.dumps(redirect_msg) + "\n") 
     
+
+    def handle_log(self, msg):
+        if msg['type'] in ['get', 'put']:
+            #sock.send(json.dumps({'src': self.my_id, 'dst': msg['src'], 'leader': 'FFFF','type': 'fail', 'MID': msg['MID']}) + '\n')
+            print "%s got a log: %s" % (self.my_id, json.dumps(msg))
+            if self.state == "f": #im a follower - redirect to leader
+                self.redirect(msg)
+            elif self.state == "l":
+                self.replicate_log(msg)
+
+        elif msg['type'] == 'noop':
+            print '%s received a NOOP from %s' % (msg['dst'], msg['src'])
+    
     def put(self, data):
         return 0
     
     def get(self, key):
         return 0
-
-    def followers_msg(self, msg):
-        if msg['type'] in ['get', 'put']:
-            sock.send(json.dumps({'src': self.my_id, 'dst': msg['src'], 'leader': 'FFFF','type': 'fail', 'MID': msg['MID']}) + '\n')
-            print "%s got a log: %s" % (self.my_id, json.dumps(msg))
-            self.redirect(msg)
-        elif msg['type'] == 'noop':
-            print '%s received a NOOP from %s' % (msg['dst'], msg['src'])
+    
+    def send_heartbeat(self):
+        msg = {'src': my_id, 'dst': "FFFF", 'leader': self.leader, 'type': 'heartbeat'}
+        sock.send(json.dumps(msg) + '\n')
+        print '%s sending a heartbeat to %s' % (msg['src'], msg['dst'])
+        self.last_heartbeat = clock
 
     def main(self):
-        last = 0
+        last_heartbeat_sent = 0
         while True:
             ready = select.select([sock], [], [], 0.1)[0]
             if sock in ready:
@@ -111,30 +120,23 @@ class Replica(object):
                     msg = json.loads(msg_raw)
             
                     # For now, respond to all client messages with a type=fail response
-                    if self.state == "f":
-                        self.followers_msg(msg)
-                    elif self.state == "c":
-                        self.candidates_msg(msg)
-                    elif self.state == "l":
-                        self.leaders_msg(msg)
-                    '''
                     if msg['type'] in ['get', 'put']:
-                        sock.send(json.dumps({'src': self.my_id, 'dst': msg['src'], 'leader': 'FFFF',
-                                                  'type': 'fail', 'MID': msg['MID']}) + '\n')
-                        print "%s got a log: %s" % (self.my_id, json.dumps(msg))      
                         self.handle_log(msg)
                     # Handle noop messages. This may be removed from your final implementation
                     elif msg['type'] == 'noop':
                         print '%s received a NOOP from %s' % (msg['dst'], msg['src'])
-                    '''
-            clock = time.time()
-            if clock-last > 2:
+            if self.state == "l":
+                clock = time.time()
+                if clock - last_heartbeat_sent > 0.05: #send heartbeats every 50ms
+                    self.send_heartbeat()
+                    last_heartbeat_sent = clock
+
                 # Send a no-op message to a random peer every two seconds, just for fun
                 # You definitely want to remove this from your implementation
-                msg = {'src': my_id, 'dst': random.choice(replica_ids), 'leader': self.leader, 'type': 'noop'}
-                sock.send(json.dumps(msg) + '\n')
-                print '%s sending a NOOP to %s' % (msg['src'], msg['dst'])
-                last = clock
+                #msg = {'src': my_id, 'dst': random.choice(replica_ids), 'leader': self.leader, 'type': 'noop'}
+                #sock.send(json.dumps(msg) + '\n')
+                #print '%s sending a NOOP to %s' % (msg['src'], msg['dst'])
+                #last = clock
     
 r = Replica()
 r.main()

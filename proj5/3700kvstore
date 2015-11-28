@@ -22,19 +22,23 @@ class Replica(object):
         self.folowers = [] # for leaders only
         self.logs = {} # {index_number: {term: 1, key: 123, val: "asdf", action: get/put}}
         self.term = 0
+        self.leader = "FFFF" 
         self.votes = 0
+        self.datastore = {}
+        self.voteed_for = -1
+        
     
     def request_vote(self):
         self.term += 1
         self.state = "c"
         self.votes += 1
-        req_vote = {"src": self.my_id, "dst": "FFFF",  "type": "req_vote", "logs": json.dumps(self.logs.keys())}
+        req_vote = {"src": self.my_id, "dst": "FFFF", "term": self.term, "type": "req_vote", "last_log": max(self.logs.keys())}
         sock.send(json.dumps(req_vote) + "\n")
 
     def elect_canditate(self, vote_request):
         request = json.loads(vote_request)
         my_last_logid = max(self.logs.keys())
-        candidates_last_logid = max(request["logs"])
+        candidates_last_logid = request["last_log"]
         if my_last_logid <= candidates_last_logid:
             #vote for that candidate
             return 0
@@ -42,22 +46,27 @@ class Replica(object):
             #reject
             return 0
     def handle_log(self, msg):
-        if self.state = "l": #If im a leader
-            print "I'm a leader"
-        else:
-            print "redirect"
-            self.redirect(msg)
+        return 0
 
     def redirect(self, msg):
-        #{'src': self.my_id, 'dst': msg['src'], 'leader': 'FFFF','type': 'fail', 'MID': msg['MID']}) + '\n'
-        redirect_msg = {"src": msg["src"], }
+        print "in redirect"
+        redirect_msg = {"src": self.my_id, "dst": msg["src"], "MID": msg["MID"], "leader": self.leader, "type": "redirect"}
+        print "====> REDIRECT: %s" % json.dumps(redirect_msg)
+        sock.send(json.dumps(redirect_msg) + "\n") 
+    
     def put(self, data):
         return 0
     
     def get(self, key):
         return 0
 
-
+    def followers_msg(self, msg):
+        if msg['type'] in ['get', 'put']:
+            sock.send(json.dumps({'src': self.my_id, 'dst': msg['src'], 'leader': 'FFFF','type': 'fail', 'MID': msg['MID']}) + '\n')
+            print "%s got a log: %s" % (self.my_id, json.dumps(msg))
+            self.redirect(msg)
+        elif msg['type'] == 'noop':
+            print '%s received a NOOP from %s' % (msg['dst'], msg['src'])
 
     def main(self):
         last = 0
@@ -68,20 +77,27 @@ class Replica(object):
                 
                 # we may receive multiple messages during a single recv(); \n denotes the break between messages
                 for msg_raw in raw.split('\n'):
-                    print msg_raw
+                    ##print msg_raw
                     if len(msg_raw) == 0: continue
                     msg = json.loads(msg_raw)
             
                     # For now, respond to all client messages with a type=fail response
+                    if self.state == "f":
+                        self.followers_msg(msg)
+                    elif self.state == "c":
+                        self.candidates_msg(msg)
+                    elif self.state == "l":
+                        self.leaders_msg(msg)
+                    '''
                     if msg['type'] in ['get', 'put']:
                         sock.send(json.dumps({'src': self.my_id, 'dst': msg['src'], 'leader': 'FFFF',
                                                   'type': 'fail', 'MID': msg['MID']}) + '\n')
-                        print "MY ID: %s" % self.my_id        
+                        print "%s got a log: %s" % (self.my_id, json.dumps(msg))      
                         self.handle_log(msg)
                     # Handle noop messages. This may be removed from your final implementation
                     elif msg['type'] == 'noop':
                         print '%s received a NOOP from %s' % (msg['dst'], msg['src'])
-                    
+                    '''
             clock = time.time()
             if clock-last > 2:
                 # Send a no-op message to a random peer every two seconds, just for fun

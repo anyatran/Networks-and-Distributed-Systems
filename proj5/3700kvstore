@@ -21,30 +21,59 @@ class Replica(object):
         self.state = "f" # follower, candidate, leader
         self.folowers = [] # for leaders only
         self.logs = {} # {index_number: {term: 1, key: 123, val: "asdf", action: get/put}}
+        self.commit_index = 0
+        self.last_applied = 0
         self.term = 0
         self.leader = "FFFF" 
         self.votes = 0
         self.datastore = {}
-        self.voteed_for = -1
-        
-    
+        self.voted_for = -1
+        self.last_heartbeat = time.time()
+        # for leaders
+        self.next_index = [] # for each server, index of the next log entry to send to that server. Init to leader last lof index + 1
+        self.match_index = [] # for each server, index of highest log entry known to be replicated on server. init to 0 then i++
+
+    def get_last_log(self):
+        last_index = max(self.logs.keys())
+        last_log = self.logs[last_index] 
+        last_log["log_index"] = last_index       
+        return last_log
+
     def request_vote(self):
         self.term += 1
         self.state = "c"
         self.votes += 1
-        req_vote = {"src": self.my_id, "dst": "FFFF", "term": self.term, "type": "req_vote", "last_log": max(self.logs.keys())}
+        last_log = self.get_last_log()
+        req_vote = {"src": self.my_id, "dst": "FFFF", "term": self.term, "type": "req_vote", "last_log": last_log}
         sock.send(json.dumps(req_vote) + "\n")
 
-    def elect_canditate(self, vote_request):
-        request = json.loads(vote_request)
-        my_last_logid = max(self.logs.keys())
-        candidates_last_logid = request["last_log"]
-        if my_last_logid <= candidates_last_logid:
-            #vote for that candidate
-            return 0
+    def candidate_up_to_date(msg):
+        my_last_log = self.get_last_log()
+        my_last_log_term = last_log["term"]
+        if my_last_log_term < msg["last_log"]["term"]: # term of last log entry
+            return True
+        elif my_last_log_term > msg["last_log"]["term"]:
+            return False
         else:
-            #reject
-            return 0
+            return my_last_log["log_index"] <= msg["last_log"]["log_index"]
+
+    def elect_canditate(self, request):
+        # received a stale req and respond negatively
+        if self.term > request["term"]:
+            print "request vote denied, stale term %s" % request["src"]
+            response = {"src": self.my_id, "dst": request["src"], "term": self.term, "type": "vote_result", "vote": "no"}
+            sock.send(json.dumps(response) + "\n")
+        # the current replica is outdated then switch to follower
+        elif self.term < request["term"]:
+            print "I'm outdated, switching to follower"
+            self.state = "f"
+            self.term = request["term"] 
+        if self.voted_for == -1 and self.candidate_up_to_date(request):
+            print "send request vote response %s to %s" %(self.my_id, request["src"])
+            self.voted_for == request["src"]
+            response = {"src": self.my_id, "dst": request["src"], "term": self.term, "type": "vote_result", "vote": "yes"}
+            sock.send(json.dumps(response) + "\n")
+
     def handle_log(self, msg):
         return 0
 
@@ -102,7 +131,7 @@ class Replica(object):
             if clock-last > 2:
                 # Send a no-op message to a random peer every two seconds, just for fun
                 # You definitely want to remove this from your implementation
-                msg = {'src': my_id, 'dst': random.choice(replica_ids), 'leader': 'FFFF', 'type': 'noop'}
+                msg = {'src': my_id, 'dst': random.choice(replica_ids), 'leader': self.leader, 'type': 'noop'}
                 sock.send(json.dumps(msg) + '\n')
                 print '%s sending a NOOP to %s' % (msg['src'], msg['dst'])
                 last = clock

@@ -242,7 +242,8 @@ class Simulation:
 		print 'Total client get()/put() requests: %i/%i' % (self.total['get'], self.total['put'])
 		print 'Total get()/put() failures: %i/%i' % (self.failures['get'], self.failures['put'])
 		print 'Total get() with incorrect response:', self.incorrect
-		print 'Mean/Median query latency: %fsec/%fsec' % (float(sum(self.latencies))/len(self.latencies),
+                if len(self.latencies) > 0:
+                        print 'Mean/Median query latency: %fsec/%fsec' % (float(sum(self.latencies))/len(self.latencies),
 															  self.latencies[len(self.latencies)/2])
 	
 	def get_stats(self):
@@ -297,8 +298,10 @@ class Simulation:
 		r.shutdown()
 
 	def __kill_leader__(self):
-		if self.leader != 'FFFF': self.__kill_replica__(self.replicas[self.leader])
-		
+		if self.leader != 'FFFF':
+                        self.__kill_replica__(self.replicas[self.leader])
+                        self.leader = 'FFFF'
+                        
 	def __kill_non_leader__(self):
 		self.__kill_replica__(self.replicas[random.choice(list(self.living_rids - set([self.leader])))])
 
@@ -330,6 +333,14 @@ class Simulation:
 			elif event['type'] == 'kill_non_leader':
 				bisect.insort(self.events, (event['time'] + clock, self.__kill_non_leader__))
 
+        def __validate_addr__(self, addr):
+                if type(addr) not in [str, unicode] or len(addr) != 4: return False
+                try:
+                        i = int(addr, 16)
+                except:
+                        return False
+                return True
+                                
 	def __route_msgs__(self, sock):
 		try:
 			raw_msgs = sock.recv(32768)
@@ -359,7 +370,16 @@ class Simulation:
 			if 'src' not in msg or 'dst' not in msg or 'leader' not in msg or 'type' not in msg:
 				print "*** Simulator Error - Message is missing a required field: %s" % (raw_msg)
 				return
-	
+                        if not self.__validate_addr__(msg['leader']):
+                                print "*** Simulator Error - Incorrect leader format: %s" % (raw_msg)
+                                return
+                        if not self.__validate_addr__(msg['dst']):
+                                print "*** Simulator Error - Incorrect destination format: %s" % (raw_msg)
+                                return
+                        if not self.__validate_addr__(msg['src']):
+                                print "*** Simulator Error - Incorrect source format: %s" % (raw_msg)
+                                return
+                        
 			# record the id of the current leader
 			self.leader = msg['leader']
 	

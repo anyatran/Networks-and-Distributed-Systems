@@ -150,8 +150,8 @@ class Replica(object):
             else: #I'm a follower
                 if self.leader != msg["leader"]: #new leader is elected
                     self.leader = msg["leader"]
-                    self.voted_for = -1
-
+                self.voted_for = -1
+                print "[heartbeat]: %s: leader - %s, term - %s, log - %s" %(self.my_id, self.leader, self.term, json.dumps(self.logs))
                 self.term = max(self.term, msg["term"])
     def put(self, data):
         return 0
@@ -187,7 +187,7 @@ class Replica(object):
                     if msg['type'] in ['get', 'put']:
                         self.handle_log(msg)
                     elif msg["type"] == "heartbeat":
-                        print "%s received a heartbeat from %s" % (self.my_id, msg["src"])
+                        #print "%s received a heartbeat from %s" % (self.my_id, msg["src"])
                         self.handle_heartbeat(msg)
                     elif msg["type"] == "redirect":
                         print "received a redirect"

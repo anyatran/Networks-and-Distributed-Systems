@@ -109,7 +109,6 @@ class Replica(object):
 
     def handle_log(self, msg):
         if msg['type'] in ['get', 'put']:
-            #sock.send(json.dumps({'src': self.my_id, 'dst': msg['src'], 'leader': 'FFFF','type': 'fail', 'MID': msg['MID']}) + '\n')
             print "%s got a log: %s" % (self.my_id, json.dumps(msg))
             if self.state == "f": #im a follower - redirect to leader
                 self.redirect(msg)
@@ -176,30 +175,33 @@ class Replica(object):
             ready = select.select([sock], [], [], 0.1)[0]
             if sock in ready:
                 raw = sock.recv(32768)
-                
+                #print "[new msg] %s" %(raw)
                 # we may receive multiple messages during a single recv(); \n denotes the break between messages
                 for msg_raw in raw.split('\n'):
-                    ##print msg_raw
                     if len(msg_raw) == 0: continue
-                    msg = json.loads(msg_raw)
-            
-                    # For now, respond to all client messages with a type=fail response
-                    if msg['type'] in ['get', 'put']:
-                        self.handle_log(msg)
-                    elif msg["type"] == "heartbeat":
-                        #print "%s received a heartbeat from %s" % (self.my_id, msg["src"])
-                        self.handle_heartbeat(msg)
-                    elif msg["type"] == "redirect":
-                        print "received a redirect"
-                        self.handle_redirect(msg)
-                    elif msg["type"] == "vote_result":
-                        self.handle_vote_result(msg)
-                    elif msg["type"] == "req_vote":
-                        print "%s received a vote request %s " %(self.my_id, json.dumps(msg))
-                        self.elect_candidate(msg)
-                    # Handle noop messages. This may be removed from your final implementation
-                    elif msg['type'] == 'noop':
-                        print '%s received a NOOP from %s' % (msg['dst'], msg['src'])
+                    try:
+                        msg = json.loads(msg_raw)
+                             
+                        # For now, respond to all client messages with a type=fail response
+                        if msg['type'] in ['get', 'put']:
+                            self.handle_log(msg)
+                        elif msg["type"] == "heartbeat":
+                            #print "%s received a heartbeat from %s" % (self.my_id, msg["src"])
+                            self.handle_heartbeat(msg)
+                        elif msg["type"] == "redirect":
+                            print "received a redirect"
+                            self.handle_redirect(msg)
+                        elif msg["type"] == "vote_result":
+                            self.handle_vote_result(msg)
+                        elif msg["type"] == "req_vote":
+                            print "%s received a vote request %s " %(self.my_id, json.dumps(msg))
+                            self.elect_candidate(msg)
+                        # Handle noop messages. This may be removed from your final implementation
+                        elif msg['type'] == 'noop':
+                            print '%s received a NOOP from %s' % (msg['dst'], msg['src'])
+                    except ValueError:
+                        print "[INCOMPLETE MSG]"
+
             if self.state == "l":
                 clock = time.time()
                 if clock - last_heartbeat_sent > 0.05: #send heartbeats every 50ms
@@ -212,6 +214,6 @@ class Replica(object):
                 #sock.send(json.dumps(msg) + '\n')
                 #print '%s sending a NOOP to %s' % (msg['src'], msg['dst'])
                 #last = clock
-    
+                #test
 r = Replica()
 r.main()

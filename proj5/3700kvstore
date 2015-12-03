@@ -19,7 +19,7 @@ class Replica(object):
     def __init__(self):
         self.my_id = sys.argv[1] 
         self.state = "f" # follower, candidate, leader
-        self.folowers = [] # for leaders only
+        self.neighbors = sys.argv[2:] # for leaders its a list of followers
         self.logs = [] #{} # {index_number: {term: 1, key: 123, val: "asdf", action: get/put}}
         self.commit_index = 0
         self.last_applied = 0
@@ -52,8 +52,9 @@ class Replica(object):
         self.state = "c"
         self.voters.append(self.my_id)
         last_log = self.get_last_log()
-        req_vote = {"src": self.my_id, "dst": "FFFF", "leader": self.leader, "term": self.term, "type": "req_vote", "last_log": last_log}
-        sock.send(json.dumps(req_vote) + "\n")
+        for replica_id in self.neighbors:
+            req_vote = {"src": self.my_id, "dst": replica_id, "leader": self.leader, "term": self.term, "type": "req_vote", "last_log": last_log}
+            sock.send(json.dumps(req_vote) + "\n")
 
     def candidate_up_to_date(self, msg):
         my_last_log = self.get_last_log()
@@ -70,6 +71,8 @@ class Replica(object):
         self.term = max(self.term, request["term"])
         self.voted_for = -1
         self.voters = []
+        self.match_index = []
+        self.next_index = []
 
     def switch_to_leader(self, request):
         if self.state == "c":
@@ -78,9 +81,18 @@ class Replica(object):
             print "%s is a new leader. voters: %s" % (self.my_id, json.dumps(self.voters))
             self.voters = []
             self.voted_for = -1
+            self.init_match_index()
             self.init_next_index()
         else:
             print "%s failed to update to become a lreader" % self.my_id
+    
+    #============= for followers ==============
+    def redirect(self, msg):
+        print "in redirect"
+        redirect_msg = {"src": self.my_id, "dst": msg["src"], "MID": msg["MID"], "leader": self.leader, "type": "redirect"}
+        print "====> REDIRECT: %s" % json.dumps(redirect_msg)
+        sock.send(json.dumps(redirect_msg) + "\n") 
+    
     def elect_candidate(self, request):
         # received a stale req and respond negatively
         if self.term > request["term"]:
@@ -101,40 +113,38 @@ class Replica(object):
                 print "[%s vote response]: %s" %(self.my_id, json.dumps(response))
                 sock.send(json.dumps(response) + "\n")
     
-    #============= for followers ==============
-    def redirect(self, msg):
-        print "in redirect"
-        redirect_msg = {"src": self.my_id, "dst": msg["src"], "MID": msg["MID"], "leader": self.leader, "type": "redirect"}
-        print "====> REDIRECT: %s" % json.dumps(redirect_msg)
-        sock.send(json.dumps(redirect_msg) + "\n") 
-    
-
 
     # =========== for leader ================
     def init_next_index(self):
         leader_next_index = len(self.logs)
         print "leader's next index: %d" %leader_next_index
-        for replica_id in self.followers:
+        for replica_id in self.neighbors:
             self.next_index[replica_id] = leader_next_index
+    
+    def init_match_index(self):
+        for replica_id in self.neighbors:
+            self.match_index[replica_id] = 0
 
     def send_heartbeat(self):
-        msg = {'src': my_id, 'dst': "FFFF", "term": self.term, 'leader': self.leader, 'type': 'heartbeat'}
-        sock.send(json.dumps(msg) + '\n')
-        print '%s sending a heartbeat to %s' % (msg['src'], msg['dst'])
+        for replica_id in self.neighbors:
+            msg = {'src': my_id, 'dst': replica_id, "term": self.term, 'leader': self.leader, 'type': 'heartbeat'}
+            sock.send(json.dumps(msg) + '\n')
+            print '%s sending a heartbeat to %s' % (msg['src'], msg['dst'])
     
     def process_log(self, msg):
         last_log = self.get_last_log()
-        log_index = last_log["log_index"] + 1
         log_term = self.term
-        log = {"term": self.term, "type": msg["type"], "key": msg["key"]}
+        log = {"src": msg["src"], "MID": msg["MID"], "term": self.term, "type": msg["type"], "key": msg["key"]}
         if msg["type"] == "put":
             log["value"] = msg["value"]
         self.logs.append(log) #self.logs[log_index] = log
-        print "[logs]: %d" %len(self.logs)#%json.dumps(self.logs)
+        print "[logs]: %s" %json.dumps(self.logs)
+        #print "[logs]: %d" %len(self.logs)#%json.dumps(self.logs)
         self.replicate_log(msg)
 
     def replicate_log(self, msg):
-        append_entry = {"src": self.my_id, "dst": "FFFF", "type": "append_log"}
+        for replica_id in self.neighbors:
+            append_entry = {"src": self.my_id, "dst": replica_id, "type": "append_log", "term": self.term, "leader": self.leader, "prev_log_index" }
         sock.send(json.dumps({'src': self.my_id, 'dst': msg['src'], 'leader': self.leader,'type': 'fail', 'MID': msg['MID']}) + '\n')
 
     #============== handling messages ===================

@@ -138,7 +138,7 @@ class Replica(object):
     def process_log(self, msg):
         last_log = self.get_last_log()
         log_term = self.term
-        log = {"src": msg["src"], "index": len(self.logs),"committed": "false", "MID": msg["MID"], "log_term": self.term, "type": msg["type"], "key": msg["key"]}
+        log = {"src": msg["src"], "index": len(self.logs),"committed": False, "MID": msg["MID"], "log_term": self.term, "type": msg["type"], "key": msg["key"]}
         if msg["type"] == "put":
             log["value"] = msg["value"]
         self.logs.append(log) #self.logs[log_index] = log
@@ -183,7 +183,7 @@ class Replica(object):
         #{"committed": false, "src": "001C", "MID": "8", "value": "2b", "key": "EA", "log_term": 1, "type": "put"}
         if log["type"] == "put":
             self.datastore[log["key"]] = log["value"]
-            log["committed"] = True
+            log["committed"] = True 
             return {"client_id": log["src"], "MID": log["MID"], "type": "put", "log_index": log_index}
         elif log["type"] == "get":
             value = self.datastore[log["key"]]
@@ -297,7 +297,7 @@ class Replica(object):
                 self.next_index[msg["src"]] = msg["next_index"]
                 print "fail"
             else:
-                print "log committs are not matching"
+                print "[!!!!!]: %s vs %s" %(json.dumps(msg["result"]), json.dumps(self.commit_result))
     
     def reply_to_client(self, status, result):
         print "[result]: %s, %s" %(json.dumps(result), json.dumps(self.committed_followers))

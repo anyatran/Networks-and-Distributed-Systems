@@ -36,6 +36,7 @@ class Replica(object):
         self.committed_followers = []
         self.next_index = {} # for each server, index of the next log entry to send to that server. Init to leader last lof index + 1
         self.match_index = {} # for each server, index of highest log entry known to be replicated on server. init to 0 then i++
+        self.commit_result = {}
 
     def get_last_log(self):
         last_log = {}
@@ -148,7 +149,7 @@ class Replica(object):
     def replicate_log(self, log):
         for replica_id in self.neighbors:
             append_entry = {}
-            entries = self.logs[self.match_index[replica_id]:]
+            entries = self.logs[self.next_index[replica_id]:]
             append_entry["term"] = self.term
             append_entry["entries"] = entries
             append_entry["type"] = "append_entry"
@@ -163,7 +164,7 @@ class Replica(object):
     #============== handling messages ===================
     def handle_log(self, msg):
         if msg['type'] in ['get', 'put']:
-            print "%s got a log: %s" % (self.my_id, json.dumps(msg))
+            print "%s got a log: src: %s, MID %s" % (self.my_id, msg["src"], msg["MID"])
             if self.state == "f": #im a follower - redirect to leader
                 self.redirect(msg)
             elif self.state == "l":
@@ -182,16 +183,23 @@ class Replica(object):
         #{"committed": false, "src": "001C", "MID": "8", "value": "2b", "key": "EA", "log_term": 1, "type": "put"}
         if log["type"] == "put":
             self.datastore[log["key"]] = log["value"]
-            log["committed"] = true
+            log["committed"] = True
             return {"client_id": log["src"], "MID": log["MID"], "type": "put", "log_index": log_index}
         elif log["type"] == "get":
             value = self.datastore[log["key"]]
             print "[value]: %s" %value
-            log["committed"] = true
-            return {"client_id": log["src"], "MID": log["MID"],"type": get, "value": value, "log_index": log_index}
+            log["committed"] = True
+            return {"client_id": log["src"], "MID": log["MID"],"type": "get", "value": value, "log_index": log_index}
         else:
-            print "wrong action: %s" %log["action"]
+            print "wrong action: %s" %log["type"]
 
+    def add_entries(self, entries):
+        for entry in entries:
+            if entry not in self.logs:
+                self.logs.append(entry)
+                print "%s added a log src:%s, MID: %s" %(self.my_id, entry["src"], entry["MID"])
+            else:
+                print "[%s]: src %s MID %s is already in logs" %(self.my_id, entry["src"], entry["MID"])#, json.dumps(self.logs)); 
 
     def handle_append_entry(self, msg):
         print "[AE %s]: %s" %(self.my_id, json.dumps(msg))
@@ -199,9 +207,10 @@ class Replica(object):
         if self.term > msg["term"]:
             print "[reject]: stale term in append entry"
         elif self.term <= msg["term"]:
+            self.last_response_received = time.time()
             if msg["prev_log_index"] == -1:# and len(self.logs) == 0: #no logs before that
-                print "no logs before that"
-                self.logs = self.logs + msg["entries"]
+                print "[%s]:no logs needed to be committed" %self.my_id
+                self.add_entries(msg["entries"])
                 self.reply_to_ae(len(self.logs), "success", {}) #next one expecting
             elif len(self.logs) - 1 < msg["prev_log_index"]: #if my last log is smaller than leader's
                 print "[reject]: follower has less logs than leader"
@@ -209,13 +218,12 @@ class Replica(object):
             elif self.logs[msg["prev_log_index"]]["log_term"] != msg["prev_log_term"]:
                 print "[reject]: unmatched terms"
                 # delete the existing entry and all that follow it
-                #my_logs_copy = self.logs.copy()
                 new_logs = self.logs[:msg["prev_log_index"]]
                 self.logs = new_logs
                 self.reply_to_ae(len(self.logs), "fail", {})
             else:
                 result = self.commit(msg["prev_log_index"]) #{clientid, MID, log_index, type, value if get}
-                self.logs = self.logs + msg["entries"]
+                self.add_entries(msg["entries"])
                 self.reply_to_ae(len(self.logs), "success", result)
                 print "alles gut"
     
@@ -253,7 +261,7 @@ class Replica(object):
                         print "[something should be committed]"
                         result = self.commit(msg["prev_log_index"])
                         self.reply_to_ae(len(self.logs), "success", result)
-                print "[heartbeat]: %s: leader - %s, term - %s, log - %s" %(self.my_id, self.leader, self.term, json.dumps(self.logs))
+                print "[heartbeat]: %s: leader - %s, term - %s, log - " %(self.my_id, self.leader, self.term)#, json.dumps(self.logs))
                 self.voted_for = -1
                 self.term = max(self.term, msg["term"])
     def put(self, data):
@@ -270,19 +278,42 @@ class Replica(object):
             print "converting to follower from leader"
             self.switch_to_follower(msg)
         else:
-            if msg["type"] == "success":
+            if msg["type"] == "success" and msg["result"] == self.commit_result:
                 self.committed_followers.append(msg["src"])
+                self.next_index[msg["src"]] = msg["next_index"]
+                #check forquorum
+                print "matching results: %s" %json.dumps(self.commit_result)
                 if len(self.committed_followers) >= quorum:
+                    #if reached quorum, 
+                    #if it is, then reply to leader
                     self.reply_to_client("ok", msg["result"])
+                    #commit log[commit+1]: next commit
+                    self.commit_result = self.commit(self.last_commit_index + 1)
+                    #last_commit_index = commit++
+                    self.last_commit_index = self.last_commit_index + 1
+                    self.last_commit_term = self.logs[self.last_commit_index]["log_term"]
                     self.committed_followers = []
             elif msg["type"] == "fail":
                 self.next_index[msg["src"]] = msg["next_index"]
+                print "fail"
+            else:
+                print "log committs are not matching"
+    
     def reply_to_client(self, status, result):
-        print json.dumps(result)
-        response = {"src": self.my_id, "leader": self.leader, "dst": result["client_id"], "MID": result["MID"], "type": status}
-        if result["action"] == "get":
-            response["value"] = result["value"]
-        sock.send(json.dumps(response) + "\n")
+        print "[result]: %s, %s" %(json.dumps(result), json.dumps(self.committed_followers))
+        if result:
+            if result["log_index"] == self.last_commit_index:
+                response = {"src": self.my_id, "leader": self.leader, "dst": result["client_id"], "MID": result["MID"], "type": status}
+                if result["type"] == "get" and status == "ok":
+                    print "=======> GET"
+                    response["value"] = result["value"]
+                sock.send(json.dumps(response) + "\n")
+                print "[replied to client]"
+            else:
+                print "commit index is not matching"
+        else:
+            print "epmty result"
+
     def main(self):
         self.last_response_received = time.time()
         last_heartbeat_sent = time.time()

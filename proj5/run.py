@@ -1,10 +1,14 @@
 #!/usr/bin/env python
 
-import sys, os, time, json, socket, select, random, subprocess, string, hashlib, bisect
+import sys, os, time, json, socket, select, random, subprocess, string, hashlib, bisect, atexit
 
 REPLICA_PROG = './3700kvstore'
 NUM_CLIENTS = 8
 TAIL_TIME = 2
+
+# TODO:
+# Switch socket to SEQPACKET
+# Make the clients dumber: don't cheat by reading sim.leader, make each client learn it locally
 
 #######################################################################################################
 
@@ -45,7 +49,7 @@ class Config:
 
 		# sanity check the events
 		for event in self.events:
-			if event['type'] not in ['kill_leader', 'kill_non_leader']:
+			if event['type'] not in ['kill_leader', 'kill_non_leader', 'part_easy', 'part_hard', 'part_end']:
 				raise ValueError("Unknown event type: %s" % (event['type']))
 			if event['time'] < 0 or event['time'] > self.lifetime:
 				raise ValueError("Event time must be between 0 and %s" % (self.lifetime))
@@ -101,7 +105,15 @@ class Client:
 		if dst == 'FFFF': dst = random.choice(self.sim.replicas.keys())
 		return {'src': self.cid, 'dst': dst, 'leader': self.sim.leader,
 				'type': 'put', 'MID': mid, 'key': key, 'value': value}
-	
+
+        def finalize(self):
+                fail_get = 0
+                fail_put = 0
+                for req in self.reqs.itervalues():
+                        if req.get: fail_get += 1
+                        else: fail_put += 1
+                return (fail_get, fail_put)
+        
 	def create_req(self, get=True):
 		# create a get message, if possible
 		if get and len(self.items) > 0:
@@ -188,12 +200,19 @@ class Replica:
 			if self.client_sock: self.client_sock.close()
 			self.listen_sock.close()
 			self.proc.kill()
+                        self.proc.wait()
 			os.unlink(self.rid)
 
 	def deliver(self, raw_msg):
 		if self.alive:
-			self.client_sock.send(raw_msg + '\n')
-
+                        try:
+			        self.client_sock.send(raw_msg + '\n')
+                                return True
+                        except:
+                                # the socket is busted, so this replica is dead
+                                self.shutdown()
+                return False
+                                
 #######################################################################################################
 
 # Represents and executes the entire simulation
@@ -210,6 +229,8 @@ class Simulation:
 		self.total_drops = 0		
 		self.latencies = []
 
+                self.partition = None
+                
 		# Load the config file
 		self.conf = Config(filename)
 		#self.conf.dump()
@@ -286,10 +307,17 @@ class Simulation:
 				if len(self.events) == 0 or self.events[0][0] > clock: break
 				self.events.pop(0)[1]()
 
-		for r in self.replicas.itervalues():
+                # Finish out the clients. All unanswered requests are considered failures
+                for client in self.clients.itervalues():
+                        fg, fp = client.finalize()
+                        self.failures['get'] += fg
+                        self.failures['put'] += fp
+                                
+        def shutdown(self):
+                for r in self.replicas.itervalues():
 			try: r.shutdown()
 			except: pass
-
+                                
 	def __kill_replica__(self, r):
 		if r.rid not in self.living_rids: return
 		self.living_rids.remove(r.rid)		
@@ -305,16 +333,52 @@ class Simulation:
 	def __kill_non_leader__(self):
 		self.__kill_replica__(self.replicas[random.choice(list(self.living_rids - set([self.leader])))])
 
+        def __partition__(self, add_leader=False):
+                qsize = len(self.replicas) / 2 + 1
+                self.partition = set()
+                r = list(self.rids)
+
+                if add_leader and self.leader != 'FFFF':
+                        self.partition.add(self.leader)
+                        r.remove(self.leader)
+                        qsize -= 1
+                else:
+                        self.leader = 'FFFF'
+                        
+                for i in range(qsize):
+                        rid = random.choice(r)
+                        self.partition.add(rid)
+                        r.remove(rid)
+
+        def __partition_easy__(self):
+                self.__partition__(True)
+                        
+        def __partition_hard__(self):
+                self.__partition__()
+
+        def __partition_end__(self):
+                self.partition = None
+
+        def __check_partition__(self, rid1, rid2):
+                if not self.partition: return True
+                i = len(self.partition & set([rid1, rid2]))
+                if i == 2 or i == 0: return True
+                return False
+                
 	def __send_get__(self):
 		client = random.choice(self.clients.values())
 		msg = client.create_req(True)
-		self.replicas[msg['dst']].deliver(json.dumps(msg))
+                self.__replica_deliver__(self.replicas[msg['dst']], json.dumps(msg))
 		
 	def __send_put__(self):
 		client = random.choice(self.clients.values())
 		msg = client.create_req(False)
-		self.replicas[msg['dst']].deliver(json.dumps(msg))
+                self.__replica_deliver__(self.replicas[msg['dst']], json.dumps(msg))
 
+        def __replica_deliver__(self, replica, raw_msg):
+                if not replica.deliver(raw_msg):
+                        self.__kill_replica__(replica)
+                        
 	def __populate_event_queue__(self, clock):
 		clock += self.conf.wait
 
@@ -332,6 +396,12 @@ class Simulation:
 				bisect.insort(self.events, (event['time'] + clock, self.__kill_leader__))
 			elif event['type'] == 'kill_non_leader':
 				bisect.insort(self.events, (event['time'] + clock, self.__kill_non_leader__))
+			elif event['type'] == 'part_easy':
+				bisect.insort(self.events, (event['time'] + clock, self.__partition_easy__))
+			elif event['type'] == 'part_hard':
+				bisect.insort(self.events, (event['time'] + clock, self.__partition_hard__))
+			elif event['type'] == 'part_end':
+				bisect.insort(self.events, (event['time'] + clock, self.__partition_end__))
 
         def __validate_addr__(self, addr):
                 if type(addr) not in [str, unicode] or len(addr) != 4: return False
@@ -381,12 +451,14 @@ class Simulation:
                                 return
                         
 			# record the id of the current leader
-			self.leader = msg['leader']
-	
+			if not self.partition or msg['src'] in self.partition:
+                                self.leader = msg['leader']
+
 			# is this message to a replica?
 			if msg['dst'] in self.replicas:
 				self.total_msgs += 1
-				if random.random() >= self.conf.drops: self.replicas[msg['dst']].deliver(raw_msg)
+				if self.__check_partition__(msg['src'], msg['dst']) and random.random() >= self.conf.drops:
+                                        self.__replica_deliver__(self.replicas[msg['dst']], raw_msg)
 				else: self.total_drops += 1
 	
 			# is this message a broadcast?
@@ -394,13 +466,15 @@ class Simulation:
 				self.total_msgs += len(self.replicas) - 1
 				for rid, r in self.replicas.iteritems():
 					if rid != msg['src']:
-						if random.random() >= self.conf.drops: r.deliver(raw_msg)
+						if self.__check_partition__(msg['src'], rid) and random.random() >= self.conf.drops:
+                                                        self.__replica_deliver__(r, raw_msg)
 						else: self.total_drops += 1
 
 			# is this message to a client?
 			elif msg['dst'] in self.clients:
 				response = self.clients[msg['dst']].deliver(raw_msg, msg)
-				if response: self.replicas[response['dst']].deliver(json.dumps(response))
+				if response:
+                                        self.__replica_deliver__(self.replicas[response['dst']], json.dumps(response))
 				
 			# we have no idea who the destination is
 			else:
@@ -429,7 +503,15 @@ if __name__ == "__main__":
 	if len(sys.argv) != 2:
 		print 'Usage: $ %s <config file>' % (sys.argv[0])
 		sys.exit()
-	
+
 	sim = Simulation(sys.argv[1])
+
+        def kill_processes():
+                try: sim.shutdown()
+                except: pass
+
+        # Attempt to kill child processes regardless of how Python shuts down (e.g. via an exception or ctrl-C)
+        atexit.register(kill_processes)
+        
 	sim.run()
 	sim.print_stats()

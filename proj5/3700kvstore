@@ -264,11 +264,6 @@ class Replica(object):
                 print "[heartbeat]: %s: leader - %s, term - %s, log - " %(self.my_id, self.leader, self.term)#, json.dumps(self.logs))
                 self.voted_for = -1
                 self.term = max(self.term, msg["term"])
-    def put(self, data):
-        return 0
-    
-    def get(self, key):
-        return 0
     
     def handle_ae_result(self, msg):
         #"src": self.my_id, "dst": self.leader, "term": self.term, "type": "success", "leader", "next_index", "result":
@@ -289,15 +284,25 @@ class Replica(object):
                     self.reply_to_client("ok", msg["result"])
                     #commit log[commit+1]: next commit
                     self.commit_result = self.commit(self.last_commit_index + 1)
+                    self.committed_followers.append(self.my_id)
                     #last_commit_index = commit++
                     self.last_commit_index = self.last_commit_index + 1
                     self.last_commit_term = self.logs[self.last_commit_index]["log_term"]
+                    print "=====[NEXT COMMIT]: %s=====" %self.last_commit_index
                     self.committed_followers = []
             elif msg["type"] == "fail":
                 self.next_index[msg["src"]] = msg["next_index"]
                 print "fail"
             else:
                 print "[!!!!!]: %s vs %s" %(json.dumps(msg["result"]), json.dumps(self.commit_result))
+                if msg["result"]:
+                    if msg["result"]["log_index"] + 1 == self.last_commit_index:
+                        self.next_index[msg["src"]] = msg["next_index"]
+                        print "updated"
+                elif not msg["result"] and msg["next_index"] == 1:
+                    print "empty but still update"
+                    self.next_index[msg["src"]] = msg["next_index"]
+
     
     def reply_to_client(self, status, result):
         print "[result]: %s, %s" %(json.dumps(result), json.dumps(self.committed_followers))

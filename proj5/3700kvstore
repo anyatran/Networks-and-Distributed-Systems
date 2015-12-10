@@ -77,6 +77,8 @@ class Replica(object):
         entries = []
         if not heartbeat:
             entries = self.logs[self.next_index[dst]:]
+        if len(entries) > 100:
+            entries = []
         msg = {
             'src': self.my_id,
             'dst': dst,
@@ -125,18 +127,16 @@ class Replica(object):
             'MID': received['MID'],
             'leader': self.leader
         }
-        print "====> REDIRECT: %s" % json.dumps(redirect_msg)
+        print "====> REDIRECT: %s" % json.dumps(msg)
         return msg
 
     def get_last_log(self):
         last_log = {}
         last_log["log_term"] = -1
-        last_log["log_index"] = -1
+        last_log["log_index"] = len(self.logs) - 1
         #if there are no logs then return {log_index: -1, term: -1}
         if len(self.logs) > 0:
-            last_index = len(self.logs) - 1 #max(self.logs.keys())
-            last_log = self.logs[last_index].copy()#self.logs[last_index].copy() 
-            last_log["log_index"] = last_index       
+            last_log["log_term"] = self.logs[len(self.logs) - 1]["log_term"]
         return last_log
 
     #================for candidates ================
@@ -296,9 +296,8 @@ class Replica(object):
                 self.last_response_received = time.time()
                 if self.state == "l" or self.state == "c":
                     self.switch_to_follower(msg)
-                else:
-                    self.term = msg["term"]
                 
+                self.term = msg["term"]
                 if msg["commit_index"] == -1:# and len(self.logs) == 0: #no logs before that
                     print "[%s]:no logs needed to be committed" %self.my_id
                     self.add_entries(msg["entries"])
@@ -306,6 +305,16 @@ class Replica(object):
                 elif len(self.logs) - 1 < msg["prev_log_index"]: #if my last log is smaller than leader's
                     print "[reject]: follower has less logs than leader"
                     self.send_to(self.reply_to_ae_msg("fail", len(self.logs))) #next index expecting 
+                elif self.logs[msg["prev_log_index"]]["log_term"] == msg["prev_log_term"]:
+                    self.logs = self.logs[:msg["prev_log_index"] + 1]
+                    self.add_entries(msg["entries"])
+                    for log_indx in range(self.next_commit_index, msg["commit_index"] + 1):
+                        self.commit(log_indx)
+                    self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
+                else:
+                    self.logs = self.logs[:msg["prev_log_index"]]
+                    self.send_to(self.reply_to_ae_msg("fail", len(self.logs)))
+                '''
                 elif len(self.logs) - 1 == msg["prev_log_index"] and self.logs[msg["prev_log_index"]]["log_term"] != msg["prev_log_term"]:
                     print "[reject]: unmatched terms"
                     # delete the existing entry and all that follow it
@@ -324,7 +333,7 @@ class Replica(object):
                     print "APPEND ENTRIES"
                     self.add_entries(msg["entries"])
                     self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
-        
+                '''
 
     def handle_vote_result(self, result):
         if self.state != "c":

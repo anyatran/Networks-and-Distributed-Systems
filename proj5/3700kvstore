@@ -38,7 +38,7 @@ class Replica(object):
         self.replicated_followers = []
         self.next_index = {} # for each server, index of the next log entry to send to that server. Init to leader last lof index + 1
         self.match_index = {} # for each server, index of highest log entry known to be replicated on server. init to 0 then i++
-
+        self.appended = True 
 
     def send_to(self, msg):
         sock.send(json.dumps(msg) + "\n")
@@ -171,7 +171,7 @@ class Replica(object):
             return my_last_log["log_index"] <= msg["last_log"]["log_index"]
     def switch_to_follower(self, request):
         self.state = "f"
-        self.leader = "FFFF"#request["leader"]
+        self.leader = request["leader"]
         self.term = max(self.term, request["term"])
         self.voted_for = -1
         self.voters = []
@@ -193,7 +193,7 @@ class Replica(object):
     
     #============= for followers ==============
     
-    def handle_req_vote(self, request):
+    def elect_candidate(self, request):
         # received a stale req and respond negatively
         if self.term > request["term"]:
             self.send_to(self.vote_result(request["src"], "no"))
@@ -223,9 +223,9 @@ class Replica(object):
             self.match_index[replica_id] = -1
 
     def send_heartbeat(self):
-        if (self.next_commit_index <= len(self.logs)-1):#catching up
-            result = self.commit(self.next_commit_index)
-            self.reply_to_client_msg(result, "ok")
+        #if (self.next_commit_index <= len(self.logs)-1):#catching up
+        #    result = self.commit(self.next_commit_index)
+        #    self.reply_to_client_msg(result, "ok")
         for replica_id in self.neighbors:
             self.send_to(self.append_entry_msg(replica_id, True))
             #send result to client as well  
@@ -247,8 +247,9 @@ class Replica(object):
         #print "[logs]: %s" %json.dumps(self.logs)
         print "[logs]: %d" %len(self.logs)#%json.dumps(self.logs)
         # if this is a first log
-        if self.next_commit_index == log["index"]:
+        if self.appended: #finished the prev append session#if self.next_commit_index == log["index"]:
             self.replicate()
+            self.appended = False
 
     def replicate(self):
         self.last_ae_sent = time.time()
@@ -269,6 +270,7 @@ class Replica(object):
         #print "commit this log: %s, %s]" %(str(log_index), json.dumps(self.logs))
         log = self.logs[log_index]
         #{"committed": false, "src": "001C", "MID": "8", "value": "2b", "key": "EA", "log_term": 1, "type": "put"}
+        self.appended = True
         if self.next_commit_index == log_index:
             if log["type"] == "put":
                 self.datastore[log["key"]] = log["value"]
@@ -385,7 +387,7 @@ class Replica(object):
                 print "match_index: %d, next_commit: %d" %(self.match_index[msg["src"]], self.next_commit_index)
                 self.match_index[msg["src"]] = msg["next_index"] - 1
                 self.next_index[msg["src"]] = msg["next_index"]
-                if self.match_index[msg["src"]] == self.next_commit_index and len(self.logs) - 1 >= self.next_commit_index:
+                if self.match_index[msg["src"]] >= self.next_commit_index and len(self.logs) - 1 >= self.next_commit_index:
                     self.replicated_followers.append(msg["src"])
                     #check forquorum
                     print "[replicated]: %s" %json.dumps(self.replicated_followers)
@@ -422,18 +424,28 @@ class Replica(object):
                         msg = json.loads(msg_raw)
                              
                         function_name = 'handle_%s' % (msg['type'])   # handle_heartbeat, handle_append_entry, handle_redirect, handle_vote_result, handle_req_vote          
-                        if hasattr(self, function_name):
-                            getattr(self, function_name)(msg)
-                        elif msg['type'] in ['get', 'put']:
+                        # For now, respond to all client messages with a type=fail response
+                        if msg['type'] in ['get', 'put']:
                             self.handle_log(msg)
                         elif msg["type"] in ["fail", "success"]:
                             print "[%s]: %s" %(msg["type"], json.dumps(msg))
                             self.handle_ae_result(msg)
+                        elif msg["type"] == "heartbeat":
+                            #print "%s received a heartbeat from %s" % (self.my_id, msg["src"])
+                            self.handle_heartbeat(msg)
+                        elif msg["type"] == "append_entry":
+                            self.handle_append_entry(msg)
+                        elif msg["type"] == "redirect":
+                            print "received a redirect"
+                            self.handle_redirect(msg)
+                        elif msg["type"] == "vote_result":
+                            self.handle_vote_result(msg)
+                        elif msg["type"] == "req_vote":
+                            print "%s received a vote request %s " %(self.my_id, json.dumps(msg))
+                            self.elect_candidate(msg)
                         # Handle noop messages. This may be removed from your final implementation
                         elif msg['type'] == 'noop':
                             print '%s received a NOOP from %s' % (msg['dst'], msg['src'])
-                        else:
-                            print "WARNING!!!! WHAT IS THIS TYPE OF MESSAGE? %s " % json.dumps(msg)
                     except ValueError:
                         print "[INCOMPLETE MSG]"
 

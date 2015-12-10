@@ -193,7 +193,7 @@ class Replica(object):
     
     #============= for followers ==============
     
-    def elect_candidate(self, request):
+    def handle_req_vote(self, request):
         # received a stale req and respond negatively
         if self.term > request["term"]:
             self.send_to(self.vote_result(request["src"], "no"))
@@ -421,28 +421,19 @@ class Replica(object):
                     try:
                         msg = json.loads(msg_raw)
                              
-                        # For now, respond to all client messages with a type=fail response
-                        if msg['type'] in ['get', 'put']:
+                        function_name = 'handle_%s' % (msg['type'])   # handle_heartbeat, handle_append_entry, handle_redirect, handle_vote_result, handle_req_vote          
+                        if hasattr(self, function_name):
+                            getattr(self, function_name)(msg)
+                        elif msg['type'] in ['get', 'put']:
                             self.handle_log(msg)
                         elif msg["type"] in ["fail", "success"]:
                             print "[%s]: %s" %(msg["type"], json.dumps(msg))
                             self.handle_ae_result(msg)
-                        elif msg["type"] == "heartbeat":
-                            #print "%s received a heartbeat from %s" % (self.my_id, msg["src"])
-                            self.handle_heartbeat(msg)
-                        elif msg["type"] == "append_entry":
-                            self.handle_append_entry(msg)
-                        elif msg["type"] == "redirect":
-                            print "received a redirect"
-                            self.handle_redirect(msg)
-                        elif msg["type"] == "vote_result":
-                            self.handle_vote_result(msg)
-                        elif msg["type"] == "req_vote":
-                            print "%s received a vote request %s " %(self.my_id, json.dumps(msg))
-                            self.elect_candidate(msg)
                         # Handle noop messages. This may be removed from your final implementation
                         elif msg['type'] == 'noop':
                             print '%s received a NOOP from %s' % (msg['dst'], msg['src'])
+                        else:
+                            print "WARNING!!!! WHAT IS THIS TYPE OF MESSAGE? %s " % json.dumps(msg)
                     except ValueError:
                         print "[INCOMPLETE MSG]"
 

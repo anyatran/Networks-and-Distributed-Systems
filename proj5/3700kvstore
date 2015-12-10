@@ -34,6 +34,7 @@ class Replica(object):
         #for candidate
         self.voters = []
         # for leaders
+        self.last_ae_sent = time.time()
         self.replicated_followers = []
         self.next_index = {} # for each server, index of the next log entry to send to that server. Init to leader last lof index + 1
         self.match_index = {} # for each server, index of highest log entry known to be replicated on server. init to 0 then i++
@@ -242,6 +243,7 @@ class Replica(object):
             self.replicate()
 
     def replicate(self):
+        self.last_ae_sent = time.time()
         for replica_id in self.neighbors:
             self.send_to(self.append_entry_msg(replica_id))
 
@@ -434,9 +436,9 @@ class Replica(object):
 
             if self.state == "l":
                 clock = time.time()
-                if clock - last_heartbeat_sent > 0.05: #send heartbeats every 50ms
+                if clock - self.last_ae_sent > 0.05: #send heartbeats every 50ms
                     self.send_heartbeat()
-                    last_heartbeat_sent = clock
+                    self.last_ae_sent = time.time()
 
 r = Replica()
 r.main()

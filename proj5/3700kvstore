@@ -65,7 +65,7 @@ class Replica(object):
         }
         print "Vote response %s from %s to %s" % (voted, self.my_id, dst)
         return msg
-
+    '''
     def heartbeat_msg(self, dst):
         msg = {
             'src': self.my_id, 
@@ -77,17 +77,25 @@ class Replica(object):
             }
         print '%s sending a heartbeat to %s, %d' % (msg['src'], msg['dst'], self.last_commit_index)
         return msg
-
-    def append_entry_msg(self, dst):
+    '''
+    # heartbeat is a boolean. True if sending a heartbeat
+    def append_entry_msg(self, dst, heartbeat):
         prev_index = self.match_index[dst]
-        prev_term = self.logs[prev_index]["log_term"]
+        prev_term = self.term
+        try:
+            prev_term = self.logs[prev_index]["log_term"]
+        except:
+            prev_term = self.term
+        entries = []
+        if not heartbeat:
+            entries = self.logs[self.next_index[dst]:]
         msg = {
             'src': self.my_id,
             'dst': dst,
             'type': "append_entry",
             'leader': self.leader,
             'term': self.term,
-            'entries': self.logs[self.next_index[dst]:],
+            'entries': entries,
             'commit_index': self.last_commit_index,
             'prev_log_index': prev_index,
             'prev_log_term': prev_term
@@ -215,11 +223,11 @@ class Replica(object):
             self.match_index[replica_id] = -1
 
     def send_heartbeat(self):
+        if (self.next_commit_index <= len(self.logs)-1):#catching up
+            result = self.commit(self.next_commit_index)
+            self.reply_to_client_msg(result, "ok")
         for replica_id in self.neighbors:
-            self.send_to(self.heartbeat_msg(replica_id))
-            #if (self.last_commit_index <= len(self.logs) - 1):#catching up
-                #result = self.commit(self.next_commit_index)
-                #self.reply_to_client(result)
+            self.send_to(self.append_entry_msg(replica_id, True))
             #send result to client as well  
 
     def process_log(self, msg):
@@ -245,7 +253,7 @@ class Replica(object):
     def replicate(self):
         self.last_ae_sent = time.time()
         for replica_id in self.neighbors:
-            self.send_to(self.append_entry_msg(replica_id))
+            self.send_to(self.append_entry_msg(replica_id, False))
 
     #============== handling messages ===================
     def handle_log(self, msg):
@@ -284,6 +292,7 @@ class Replica(object):
 
     def add_entries(self, entries):
         self.logs = self.logs + entries
+        print "%s appended: %s" %(self.my_id, json.dumps(self.logs[len(self.logs) - 1]))
 
     def handle_append_entry(self, msg):
         print "[AE %s]: %s" %(self.my_id, json.dumps(msg))
@@ -291,38 +300,41 @@ class Replica(object):
         if self.term > msg["term"]:
             print "[reject]: stale term in append entry"
         elif self.term <= msg["term"]:
-            if self.state == "l" or self.state == "c":
-                self.switch_to_follower(msg)
+            if len(msg["entries"]) == 0:
+                self.handle_heartbeat(msg)
             else:
-                self.term = msg["term"]
-
-            self.last_response_received = time.time()
-            if msg["commit_index"] == -1:# and len(self.logs) == 0: #no logs before that
-                print "[%s]:no logs needed to be committed" %self.my_id
-                self.add_entries(msg["entries"])
-                self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
-            elif len(self.logs) - 1 < msg["prev_log_index"]: #if my last log is smaller than leader's
-                print "[reject]: follower has less logs than leader"
-                self.send_to(self.reply_to_ae_msg("fail", len(self.logs))) #next index expecting 
-            elif len(self.logs) - 1 == msg["prev_log_index"] and self.logs[msg["prev_log_index"]]["log_term"] != msg["prev_log_term"]:
-                print "[reject]: unmatched terms"
-                # delete the existing entry and all that follow it
-                self.logs = self.logs[:msg["prev_log_index"]]
-                #result = self.commit(msg["commit_index"])
-                self.send_to(self.reply_to_ae_msg("fail", len(self.logs)))
-            elif len(self.logs) - 1 > msg["prev_log_index"]:
-                self.logs = self.logs[:msg["prev_log_index"]+1]
-                self.add_entries(msg["entries"])
-                result = self.commit(msg["commit_index"])
-                self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
-            else:
-                #print "===my logs: %s" %json.dumps(self.logs)
-                result = self.commit(msg["commit_index"]) #{clientid, MID, log_index, type, value if get}
-                #if len(msg["entries"]) != 0:
-                print "APPEND ENTRIES"
-                self.add_entries(msg["entries"])
-                self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
-    
+                self.last_response_received = time.time()
+                if self.state == "l" or self.state == "c":
+                    self.switch_to_follower(msg)
+                else:
+                    self.term = msg["term"]
+                
+                if msg["commit_index"] == -1:# and len(self.logs) == 0: #no logs before that
+                    print "[%s]:no logs needed to be committed" %self.my_id
+                    self.add_entries(msg["entries"])
+                    self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
+                elif len(self.logs) - 1 < msg["prev_log_index"]: #if my last log is smaller than leader's
+                    print "[reject]: follower has less logs than leader"
+                    self.send_to(self.reply_to_ae_msg("fail", len(self.logs))) #next index expecting 
+                elif len(self.logs) - 1 == msg["prev_log_index"] and self.logs[msg["prev_log_index"]]["log_term"] != msg["prev_log_term"]:
+                    print "[reject]: unmatched terms"
+                    # delete the existing entry and all that follow it
+                    self.logs = self.logs[:msg["prev_log_index"]]
+                    #result = self.commit(msg["commit_index"])
+                    self.send_to(self.reply_to_ae_msg("fail", len(self.logs)))
+                elif len(self.logs) - 1 > msg["prev_log_index"]:
+                    self.logs = self.logs[:msg["prev_log_index"]+1]
+                    self.add_entries(msg["entries"])
+                    result = self.commit(msg["commit_index"])
+                    self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
+                else:
+                    #print "===my logs: %s" %json.dumps(self.logs)
+                    result = self.commit(msg["commit_index"]) #{clientid, MID, log_index, type, value if get}
+                    #if len(msg["entries"]) != 0:
+                    print "APPEND ENTRIES"
+                    self.add_entries(msg["entries"])
+                    self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
+        
 
     def handle_vote_result(self, result):
         if self.state != "c":

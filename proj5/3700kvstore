@@ -65,19 +65,7 @@ class Replica(object):
         }
         print "Vote response %s from %s to %s" % (voted, self.my_id, dst)
         return msg
-    '''
-    def heartbeat_msg(self, dst):
-        msg = {
-            'src': self.my_id, 
-            'dst': dst,
-            'commit_index': self.last_commit_index, 
-            'term': self.term, 
-            'leader': self.leader, 
-            'type': 'heartbeat'
-            }
-        print '%s sending a heartbeat to %s, %d' % (msg['src'], msg['dst'], self.last_commit_index)
-        return msg
-    '''
+    
     # heartbeat is a boolean. True if sending a heartbeat
     def append_entry_msg(self, dst, heartbeat):
         prev_index = self.match_index[dst]

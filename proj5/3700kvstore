@@ -86,7 +86,7 @@ class Replica(object):
             'type': "append_entry",
             'leader': self.leader,
             'term': self.term,
-            'entries': self.logs[self.next_index[dst]:]
+            'entries': self.logs[self.next_index[dst]:],
             'commit_index': self.last_commit_index,
             'prev_log_index': prev_index,
             'prev_log_term': prev_term
@@ -110,6 +110,7 @@ class Replica(object):
         msg = {
             'src': self.my_id,
             'dst': result["client_id"],
+            'leader': self.leader,
             'MID': result["MID"],
             'type': status
         }
@@ -122,7 +123,7 @@ class Replica(object):
         print "in redirect"
         msg = {
             'src': self.my_id,
-            'dst': received['src']
+            'dst': received['src'],
             'type': 'redirect',
             'MID': received['MID'],
             'leader': self.leader
@@ -186,9 +187,9 @@ class Replica(object):
     def elect_candidate(self, request):
         # received a stale req and respond negatively
         if self.term > request["term"]:
-            self.send_to(self.vote_result("no", request["src"]))
+            self.send_to(self.vote_result(request["src"], "no"))
         # the current replica is outdated then switch to follower
-        elif self.term < request["term"]:
+        elif self.term <= request["term"]:
             self.last_response_received = time.time()
             if self.state != "f":
                 print "I'm outdated, switching to follower"
@@ -197,11 +198,12 @@ class Replica(object):
             if self.voted_for == -1 and self.candidate_up_to_date(request):
                 self.voted_for = request["src"]
                 self.term = max(self.term, request["term"])
-                self.sent_to(self.vote_result("yes", request["src"]))
+                self.send_to(self.vote_result(request["src"], "yes"))
     
 
     # =========== for leader ================
     def init_next_index(self):
+        self.next_index = {}
         leader_next_index = len(self.logs)
         print "leader's next index: %d" %leader_next_index
         for replica_id in self.neighbors:

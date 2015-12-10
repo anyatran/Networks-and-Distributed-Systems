@@ -36,8 +36,8 @@ class Replica(object):
         # for leaders
         self.last_ae_sent = time.time()
         self.replicated_followers = []
-        self.next_index = {} # for each server, index of the next log entry to send to that server. Init to leader last lof index + 1
-        self.match_index = {} # for each server, index of highest log entry known to be replicated on server. init to 0 then i++
+        self.next_index = {} 
+        self.match_index = {} 
         self.appended = True 
 
     def send_to(self, msg):
@@ -348,20 +348,23 @@ class Replica(object):
     def handle_heartbeat(self, msg):
         if self.term > msg["term"]:
             print "%s doesnt recognise leader: %s" %(self.my_id, json.dumps(msg))
+            self.send_to(self.reply_to_ae_msg("fail", len(self.logs)))
         elif self.term <= msg["term"]:
             self.last_response_received = time.time()
             if self.state == "c" or self.state == "l":
                 self.switch_to_follower(msg)
+                self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
             else: #I'm a follower
                 if self.leader != msg["leader"]: #new leader is elected
                     self.leader = msg["leader"]
                 print "[HB comm]: %d" %msg["commit_index"]
-                if msg["commit_index"] != -1 and msg["commit_index"] == self.next_commit_index:# self.logs[msg["commit_index"]]["committed"] == "false": #something shoud be committed
+                if msg["commit_index"] != -1 and msg["commit_index"] == self.next_commit_index:
                     print "[%s something should be committed]: "# %(self.my_id, json.dumps(self.logs[msg["commit_index"]]))
                     result = self.commit(msg["commit_index"])
                 print "[heartbeat]: %s: leader - %s, term - %s, log - " %(self.my_id, self.leader, self.term)#, json.dumps(self.logs))
                 self.voted_for = -1
                 self.term = max(self.term, msg["term"])
+                self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
     
     def handle_ae_result(self, msg):
         #"src": self.my_id, "dst": self.leader, "term": self.term, "type": "success", "leader", "next_index", "result":
@@ -410,8 +413,7 @@ class Replica(object):
                     if len(msg_raw) == 0: continue
                     try:
                         msg = json.loads(msg_raw)
-                             
-                        function_name = 'handle_%s' % (msg['type'])   # handle_heartbeat, handle_append_entry, handle_redirect, handle_vote_result, handle_req_vote          
+                                    
                         # For now, respond to all client messages with a type=fail response
                         if msg['type'] in ['get', 'put']:
                             self.handle_log(msg)

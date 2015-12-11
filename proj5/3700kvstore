@@ -425,6 +425,7 @@ class Replica(object):
                                     
                         # For now, respond to all client messages with a type=fail response
                         if msg['type'] in ['get', 'put']:
+                            print "***************** %s" %(json.dumps(msg))
                             self.handle_log(msg)
                         elif msg["type"] in ["fail", "success"]:
                             print "[%s]: %s" %(msg["type"], json.dumps(msg))

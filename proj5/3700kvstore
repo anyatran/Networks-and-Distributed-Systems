@@ -64,7 +64,7 @@ class Replica(object):
             'term': self.term,
             'vote': voted
         }
-        #print "Vote response %s from %s to %s" % (voted, self.my_id, dst)
+        print "Vote response %s from %s to %s" % (voted, self.my_id, dst)
         return msg
     
     # heartbeat is a boolean. True if sending a heartbeat
@@ -106,7 +106,7 @@ class Replica(object):
         return msg
 
     def reply_to_client_msg(self, result, status):
-        #print "[result]: %s, %s" %(json.dumps(result), json.dumps(self.replicated_followers))
+        print "[result]: %s, %s" %(json.dumps(result), json.dumps(self.replicated_followers))
         msg = {
             'src': self.my_id,
             'dst': result["client_id"],
@@ -128,7 +128,7 @@ class Replica(object):
             'MID': received['MID'],
             'leader': self.leader
         }
-        #print "====> REDIRECT: %s" % json.dumps(msg)
+        print "====> REDIRECT: %s" % json.dumps(msg)
         return msg
 
     def get_last_log(self):
@@ -172,38 +172,38 @@ class Replica(object):
         if self.state == "c":
             self.state = "l"
             self.leader = self.my_id
-            #print "%s is a new leader. voters: %s" % (self.my_id, json.dumps(self.voters))
+            print "%s is a new leader. voters: %s" % (self.my_id, json.dumps(self.voters))
             self.voters = []
             self.voted_for = -1
             self.init_match_index()
             self.init_next_index()
-        #else:
-            #print "%s failed to update to become a lreader" % self.my_id
+        else:
+            print "%s failed to update to become a lreader" % self.my_id
     
     #============= for followers ==============
     
     def elect_candidate(self, request):
         # received a stale req and respond negatively
-        if self.term > request["term"]:
-            self.send_to(self.vote_result(request["src"], "no"))
+        #if self.term > request["term"]:
+            #self.send_to(self.vote_result(request["src"], "no"))
         # the current replica is outdated then switch to follower
-        elif self.term <= request["term"]:
-            self.last_response_received = time.time()
-            if self.state != "f":
-                #print "I'm outdated, switching to follower"
+        if self.term <= request["term"]:
+            if self.state != "f" and self.term < request["term"]:
+                print "I'm outdated, switching to follower"
                 self.switch_to_follower(request)
 
             if self.voted_for == -1 and self.candidate_up_to_date(request):
                 self.voted_for = request["src"]
                 self.term = max(self.term, request["term"])
                 self.send_to(self.vote_result(request["src"], "yes"))
+                self.last_response_received = time.time()
     
 
     # =========== for leader ================
     def init_next_index(self):
         self.next_index = {}
         leader_next_index = len(self.logs)
-        #print "leader's next index: %d" %leader_next_index
+        print "leader's next index: %d" %leader_next_index
         for replica_id in self.neighbors:
             self.next_index[replica_id] = leader_next_index
     
@@ -233,7 +233,7 @@ class Replica(object):
             log["value"] = msg["value"]
         self.logs.append(log)
         #print "[logs]: %s" %json.dumps(self.logs)
-        #print "[logs]: %d" %len(self.logs)#%json.dumps(self.logs)
+        print "[logs]: %d" %len(self.logs)#%json.dumps(self.logs)
         # if this is a first log
         if self.appended: #finished the prev append session#if self.next_commit_index == log["index"]:
             self.replicate()
@@ -247,7 +247,7 @@ class Replica(object):
     #============== handling messages ===================
     def handle_log(self, msg):
         if msg['type'] in ['get', 'put']:
-            #print "%s got a log: src: %s, MID %s" % (self.my_id, msg["src"], msg["MID"])
+            print "%s got a log: src: %s, MID %s" % (self.my_id, msg["src"], msg["MID"])
             if self.state == "f": #im a follower - redirect to leader
                 self.send_to(self.redirect_msg(msg))
             elif self.state == "l":
@@ -264,30 +264,30 @@ class Replica(object):
                 self.datastore[log["key"]] = log["value"]
                 self.last_commit_index = log_index
                 self.next_commit_index += 1
-                #print "%s: alles gut" %self.my_id
+                print "%s: alles gut" %self.my_id
                 return {"client_id": log["src"], "MID": log["MID"], "type": "put", "log_index": log_index}
             elif log["type"] == "get":
                 value = self.datastore[log["key"]]
                 #print "[value]: %s" %value
                 self.last_commit_index = log_index
                 self.next_commit_index += 1
-                #print "%s: alles gut" %self.my_id
+                print "%s: alles gut" %self.my_id
                 return {"client_id": log["src"], "MID": log["MID"],"type": "get", "value": value, "log_index": log_index}
-            #else:
-                #print "wrong action: %s" %log["type"]
+            else:
+                print "wrong action: %s" %log["type"]
         #else:
             #print "*=*=*=%s commits index is not matching: %d, %d" %(self.my_id, self.next_commit_index, log_index)
 
     def add_entries(self, entries):
         self.logs = self.logs + entries
-        #print "%s appended: %s" %(self.my_id, json.dumps(self.logs[len(self.logs) - 1]))
+        print "%s appended: %s" %(self.my_id, json.dumps(self.logs[len(self.logs) - 1]))
 
     def handle_append_entry(self, msg):
-        #print "[AE %s]: %s" %(self.my_id, json.dumps(msg))
+        print "[AE %s]: %s" %(self.my_id, json.dumps(msg))
         # src, dst, leader, prev_log_index, type, entries, term
         if self.term > msg["term"]:
             a = 1
-            #print "[reject]: stale term in append entry"
+            print "[reject]: stale term in append entry"
         elif self.term <= msg["term"]:
             if len(msg["entries"]) == 0:
                 self.handle_heartbeat(msg)
@@ -298,11 +298,11 @@ class Replica(object):
                 
                 self.term = msg["term"]
                 if msg["commit_index"] == -1:# and len(self.logs) == 0: #no logs before that
-                    #print "[%s]:no logs needed to be committed" %self.my_id
+                    print "[%s]:no logs needed to be committed" %self.my_id
                     self.add_entries(msg["entries"])
                     self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
                 elif len(self.logs) - 1 < msg["prev_log_index"]: #if my last log is smaller than leader's
-                    #print "[reject]: follower has less logs than leader"
+                    print "[reject]: fail: follower has less logs than leader"
                     self.send_to(self.reply_to_ae_msg("fail", len(self.logs))) #next index expecting 
                 elif self.logs[msg["prev_log_index"]]["log_term"] == msg["prev_log_term"]:
                     self.logs = self.logs[:msg["prev_log_index"] + 1]
@@ -312,6 +312,7 @@ class Replica(object):
                     self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
                 else:
                     self.logs = self.logs[:msg["prev_log_index"]]
+                    print "fail"
                     self.send_to(self.reply_to_ae_msg("fail", len(self.logs)))
                 '''
                 elif len(self.logs) - 1 == msg["prev_log_index"] and self.logs[msg["prev_log_index"]]["log_term"] != msg["prev_log_term"]:
@@ -338,28 +339,28 @@ class Replica(object):
         a = 1
         if self.state != "c":
             a = 1
-            #print "%s is not a candidate but received a vote response " % self.my_id
+            print "%s is not a candidate but received a vote response " % self.my_id
         else:
             a = 1
-            #print "%s received a vote result %s" %(self.my_id, json.dumps(result))
+            print "%s received a vote result %s" %(self.my_id, json.dumps(result))
             if self.term > result["term"]:
                 a = 1
-                #print "stale term in voteresult"
+                print "stale term in voteresult"
             elif self.term < result["term"]:
-                #print "Im behind, switching to follower"
+                print "Im behind, switching to follower"
                 self.switch_to_follower(result)
             else:
                 if result["vote"] == "yes":
                     self.voters.append(result["src"])
-                    #print "total votes: %s, quorum: %s" %(str(len(self.voters)), str(quorum))
+                    print "total votes: %s, quorum: %s" %(str(len(self.voters)), str(quorum))
                     if len(self.voters) >= quorum: #reched the quorum
                         self.switch_to_leader(result)
-                #else:
-                    #print "got denied: %s" %json.dumps(result)
+                else:
+                    print "got denied: %s" %json.dumps(result)
    
     def handle_heartbeat(self, msg):
         if self.term > msg["term"]:
-            #print "%s doesnt recognise leader: %s" %(self.my_id, json.dumps(msg))
+            print "%s doesnt recognise leader: fail  %s" %(self.my_id, json.dumps(msg))
             self.send_to(self.reply_to_ae_msg("fail", len(self.logs)))
         elif self.term <= msg["term"]:
             self.last_response_received = time.time()
@@ -369,9 +370,9 @@ class Replica(object):
             else: #I'm a follower
                 if self.leader != msg["leader"]: #new leader is elected
                     self.leader = msg["leader"]
-                #print "[HB comm]: %d" %msg["commit_index"]
+                print "[HB comm]: %d" %msg["commit_index"]
                 if msg["commit_index"] != -1 and msg["commit_index"] == self.next_commit_index:
-                    #print "[%s something should be committed]: "# %(self.my_id, json.dumps(self.logs[msg["commit_index"]]))
+                    print "[%s something should be committed]: "# %(self.my_id, json.dumps(self.logs[msg["commit_index"]]))
                     result = self.commit(msg["commit_index"])
                 #print "[heartbeat]: %s: leader - %s, term - %s, log - " %(self.my_id, self.leader, self.term)#, json.dumps(self.logs))
                 self.voted_for = -1
@@ -382,42 +383,42 @@ class Replica(object):
         #"src": self.my_id, "dst": self.leader, "term": self.term, "type": "success", "leader", "next_index", "result":
         if self.state != "l":
             a = 1
-            #print "[error]: %s is not a leader but got a ae response" % self.my_id
+            print "[error]: %s is not a leader but got a ae response" % self.my_id
         elif self.term < msg["term"]:
-            #print "converting to follower from leader"
+            print "converting to follower from leader"
             self.switch_to_follower(msg)
         else:
             if msg["type"] == "success":
-                #print "match_index: %d, next_commit: %d" %(self.match_index[msg["src"]], self.next_commit_index)
+                print "match_index: %d, next_commit: %d" %(self.match_index[msg["src"]], self.next_commit_index)
                 self.match_index[msg["src"]] = msg["next_index"] - 1
                 self.next_index[msg["src"]] = msg["next_index"]
                 if self.match_index[msg["src"]] >= self.next_commit_index and len(self.logs) - 1 >= self.next_commit_index:
                     self.replicated_followers.append(msg["src"])
                     #check forquorum
-                    #print "[replicated]: %s" %json.dumps(self.replicated_followers)
+                    print "[replicated]: %s" %json.dumps(self.replicated_followers)
                     if len(self.replicated_followers) >= quorum:
-                        #print "[quorum timer]: %s" %str(time.time() - self.ae_timer)
+                        print "[quorum timer]: %s" %str(time.time() - self.ae_timer)
                         result = self.commit(self.last_commit_index + 1)
                         self.send_to(self.reply_to_client_msg(result, "ok"))
-                        #print "=====[COMMITed]: %s=====" %self.last_commit_index
+                        print "=====[COMMITed]: %s=====" %self.last_commit_index
                         self.replicated_followers = []
                         self.replicated_followers.append(self.my_id)
                         #self.replicate()
             elif msg["type"] == "fail":
                 self.next_index[msg["src"]] = msg["next_index"]
-                #print "fail"
+                print "fail"
                 #self.replicate()
 
     def main(self):
         self.last_response_received = time.time()
         last_heartbeat_sent = time.time()
-        #print "%s is starting. Election timeout: %s ms" %(self.my_id, str(self.election_timeout))
+        print "%s is starting. Election timeout: %s ms" %(self.my_id, str(self.election_timeout))
         while True:
             current = time.time()
             if (current - self.last_response_received) > self.election_timeout and self.state == "f": #timeout
                 self.request_vote()
 
-            ready = select.select([sock], [], [], 0.08)[0]
+            ready = select.select([sock], [], [], 0.075)[0]
             if sock in ready:
                 raw = sock.recv(32768)
                 #print "[new msg] %s" %(raw)
@@ -432,7 +433,7 @@ class Replica(object):
                             #print "***************** %s" %(json.dumps(msg))
                             self.handle_log(msg)
                         elif msg["type"] in ["fail", "success"]:
-                            #print "[%s]: %s" %(msg["type"], json.dumps(msg))
+                            print "[%s]: %s" %(msg["type"], json.dumps(msg))
                             self.handle_ae_result(msg)
                         elif msg["type"] == "heartbeat":
                             #print "%s received a heartbeat from %s" % (self.my_id, msg["src"])
@@ -440,16 +441,16 @@ class Replica(object):
                         elif msg["type"] == "append_entry":
                             self.handle_append_entry(msg)
                         elif msg["type"] == "redirect":
-                            #print "received a redirect"
+                            print "received a redirect"
                             self.handle_redirect(msg)
                         elif msg["type"] == "vote_result":
                             self.handle_vote_result(msg)
                         elif msg["type"] == "req_vote":
-                            #print "%s received a vote request %s " %(self.my_id, json.dumps(msg))
+                            print "%s received a vote request %s " %(self.my_id, json.dumps(msg))
                             self.elect_candidate(msg)
                     except ValueError:
                         a = 1
-                        #print "[INCOMPLETE MSG]"
+                        print "[INCOMPLETE MSG]"
 
             if self.state == "l":
                 clock = time.time()

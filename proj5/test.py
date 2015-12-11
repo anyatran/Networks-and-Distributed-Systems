@@ -3,6 +3,8 @@
 import getpass, os, argparse, atexit
 from run import Simulation
 
+VERSION = '0.2'
+
 LEADERBOARD_OUTPUT = '/course/cs3700f15/stats/project5/'
 
 # Constants for tuning the difficulty of the tests
@@ -49,7 +51,7 @@ def run_test(filename, description, requests, replicas, mayfail, tolerance, late
 		print '\t\tTesting error: Too many type=fail responses to client requests'
 		pf = 'FAIL'
 	elif stats.total_msgs > requests * replicas * 2 * tolerance:
-		print '\t\tTesting error: Too many total messages'
+		print '\t\tTesting error: Too many total messages %i vs %i' %(stats.total_msgs, requests * replicas * 2 * tolerance)
 		pf = 'FAIL'
 	elif stats.mean_latency > latency:
 		print '\t\tTesting error: Latency of requests is too high'
@@ -72,7 +74,7 @@ trials.append(run_test('simple-3.json', 'No drops, no failures, 40% read',
                        PACKETS_LOW, REPLICAS, MAYFAIL_LOW, 1.2, LATENCY))
 trials.append(run_test('simple-4.json', 'No drops, no failures, 20% read',
                        PACKETS_LOW, REPLICAS, MAYFAIL_LOW, 1.2, LATENCY))
-
+'''
 print 'Unreliable network tests (5 replicas, 30 seconds, 500 requests):'
 trials.append(run_test('unreliable-1.json', '10% drops, no failures, 80% read',
                        PACKETS_LOW, REPLICAS, MAYFAIL_LOW, 1.25, LATENCY))
@@ -86,7 +88,7 @@ trials.append(run_test('unreliable-5.json', '30% drops, no failures, 80% read',
                        PACKETS_LOW, REPLICAS, MAYFAIL_LOW, 1.35, LATENCY))
 trials.append(run_test('unreliable-6.json', '30% drops, no failures, 20% read',
                        PACKETS_LOW, REPLICAS, MAYFAIL_LOW, 1.35, LATENCY))
-
+'''
 print 'Crash failure tests (5 replicas, 30 seconds, 500 requests):'
 trials.append(run_test('crash-1.json', 'No drops, 1 replica failure, 80% read',
                        PACKETS_LOW, REPLICAS, MAYFAIL_LOW, 1.3, LATENCY))
@@ -101,7 +103,7 @@ trials.append(run_test('crash-5.json', 'No drops, 1 leader failure, 80% read',
 trials.append(run_test('crash-6.json', 'No drops, 1 leader failure, 20% read',
                        PACKETS_LOW, REPLICAS, MAYFAIL_HIGH, 1.3, LATENCY))
 
-ldr = open(LEADERBOARD_OUPUT + getpass.getuser(), 'w')
+ldr = open(LEADERBOARD_OUTPUT + getpass.getuser(), 'w')
 
 print 'Bring the pain (5 replicas, 30 seconds, 1000 requests):'
 trials.append(run_test('advanced-1.json', '20% drops, 2 replica failure, 20% read',

@@ -2,6 +2,8 @@
 
 import sys, os, time, json, socket, select, random, subprocess, string, hashlib, bisect, atexit
 
+VERSION = "0.3"
+
 REPLICA_PROG = './3700kvstore'
 NUM_CLIENTS = 8
 TAIL_TIME = 2
@@ -132,9 +134,11 @@ class Client:
 		# validate the message
 		if 'MID' not in msg:
 			print "*** Simulator Error - Message missing mid field: %s" % (raw_msg)
+			self.sim.incorrect += 1
 			return None
 		if msg['type'] not in ['ok', 'fail', 'redirect']:
 			print "*** Simulator Error - Unknown message type sent to client: %s" % (raw_msg)
+			self.sim.incorrect += 1
 			return None
 		
 		# is this a message that I'm expecting?
@@ -143,6 +147,7 @@ class Client:
 			req = self.reqs[mid]
 		except:
 			print "*** Simulator Error - client received an unexpected MID: %s" % (raw_msg)
+			self.sim.incorrect += 1
 			return None
 		
 		del self.reqs[mid]
@@ -160,11 +165,12 @@ class Client:
 		# msg type must be ok
 		if req.get:
 			if 'value' not in msg:
-				self.sim.incorrect += 1
-				print "*** Simulator Error - get() response missing the value of the key: %s" % (raw_msg)			
+				print "*** Simulator Error - get() response missing the value of the key: %s" % (raw_msg)
+                                self.sim.incorrect += 1
+	
 			if self.items[req.key] != msg['value']:
-				self.sim.incorrect += 1
 				print "*** Simulator Error - client received an incorrect value for a key: %s" % (raw_msg)
+				self.sim.incorrect += 1
 		else:
 			self.items[req.key] = req.val
 		
@@ -229,6 +235,10 @@ class Simulation:
 		self.total_drops = 0		
 		self.latencies = []
 
+                # for handling partial reads
+                self.rollover = None
+                
+                # virtual network partitions
                 self.partition = None
                 
 		# Load the config file
@@ -277,8 +287,12 @@ class Simulation:
 		s.failed_get = self.failures['get']
 		s.failed_put = self.failures['put']
 		s.incorrect = self.incorrect
-		s.mean_latency = float(sum(self.latencies))/len(self.latencies)
-		s.median_latency = self.latencies[len(self.latencies)/2]
+                if len(self.latencies) > 0:
+                        s.mean_latency = float(sum(self.latencies))/len(self.latencies)
+		        s.median_latency = self.latencies[len(self.latencies)/2]
+                else:
+                        s.mean_latency = 0.0
+		        s.median_latency = 0.0                        
 		return s
 	
 	def run(self):
@@ -413,9 +427,9 @@ class Simulation:
                                 
 	def __route_msgs__(self, sock):
 		try:
-			raw_msgs = sock.recv(32768)
-		except:
-			print "*** Simulator Error - A replica quit unexpectedly" % (raw_msg)
+			raw_msgs = sock.recv(131072)
+		except: 
+			print "*** Simulator Error - A replica quit unexpectedly"
 			self.__close_replica__(sock)
 			return
 
@@ -424,30 +438,46 @@ class Simulation:
 			self.__close_replica__(sock)
 			return
 
-		for raw_msg in raw_msgs.split('\n'):
+                raw_msgs = raw_msgs.split('\n')
+                
+		for index, raw_msg in enumerate(raw_msgs):
 			if len(raw_msg) == 0: continue
-		
+
+                        if self.rollover:
+                                raw_msg = self.rollover + raw_msg
+                                self.rollover = None
+                                
 			# decode and validate the message
 			try:
 				msg = json.loads(raw_msg)
 			except:
-				print "*** Simulator Error - Unable to decode JSON message: %s" % (raw_msg)
-				return
+                                if index == len(raw_msgs):
+                                        self.rollover = raw_msg
+                                        return
+
+                                print "*** Simulator Error - Unable to decode JSON message: %s" % (raw_msg)
+                                self.incorrect += 1
+                                return
 			
 			if type(msg) is not dict:
 				print "*** Simulator Error - Message is not a dictionary: %s" % (raw_msg)
+                                self.incorrect += 1
 				return
 			if 'src' not in msg or 'dst' not in msg or 'leader' not in msg or 'type' not in msg:
 				print "*** Simulator Error - Message is missing a required field: %s" % (raw_msg)
+                                self.incorrect += 1
 				return
                         if not self.__validate_addr__(msg['leader']):
                                 print "*** Simulator Error - Incorrect leader format: %s" % (raw_msg)
+                                self.incorrect += 1
                                 return
                         if not self.__validate_addr__(msg['dst']):
                                 print "*** Simulator Error - Incorrect destination format: %s" % (raw_msg)
+                                self.incorrect += 1
                                 return
                         if not self.__validate_addr__(msg['src']):
                                 print "*** Simulator Error - Incorrect source format: %s" % (raw_msg)
+                                self.incorrect += 1
                                 return
                         
 			# record the id of the current leader
@@ -479,6 +509,7 @@ class Simulation:
 			# we have no idea who the destination is
 			else:
 				print "*** Simulator Error - Unknown destination: %s" % (raw_msg)
+                                self.incorrect += 1
 			
 	def __accept__(self, sock):
 		client = sock.accept()[0]

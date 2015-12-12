@@ -319,34 +319,14 @@ class Replica(object):
                 elif self.logs[msg["prev_log_index"]]["log_term"] == msg["prev_log_term"]:
                     self.logs = self.logs[:msg["prev_log_index"] + 1]
                     self.add_entries(msg["entries"])
-                    for log_indx in range(self.next_commit_index, msg["commit_index"] + 1):
+                    for log_indx in range(self.next_commit_index,min(msg["commit_index"] + 1, (len(self.logs) + 1))):# msg["commit_index"] + 1):
                         self.commit(log_indx)
                     self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
                 else:
                     self.logs = self.logs[:msg["prev_log_index"]]
                     print "fail"
                     self.send_to(self.reply_to_ae_msg("fail", len(self.logs)))
-                '''
-                elif len(self.logs) - 1 == msg["prev_log_index"] and self.logs[msg["prev_log_index"]]["log_term"] != msg["prev_log_term"]:
-                    print "[reject]: unmatched terms"
-                    # delete the existing entry and all that follow it
-                    self.logs = self.logs[:msg["prev_log_index"]]
-                    #result = self.commit(msg["commit_index"])
-                    self.send_to(self.reply_to_ae_msg("fail", len(self.logs)))
-                elif len(self.logs) - 1 > msg["prev_log_index"]:
-                    self.logs = self.logs[:msg["prev_log_index"]+1]
-                    self.add_entries(msg["entries"])
-                    result = self.commit(msg["commit_index"])
-                    self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
-                else:
-                    #print "===my logs: %s" %json.dumps(self.logs)
-                    result = self.commit(msg["commit_index"]) #{clientid, MID, log_index, type, value if get}
-                    #if len(msg["entries"]) != 0:
-                    print "APPEND ENTRIES"
-                    self.add_entries(msg["entries"])
-                    self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
-                '''
-
+    
     def handle_vote_result(self, result):
         a = 1
         if self.state != "c":

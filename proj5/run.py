@@ -165,6 +165,7 @@ class Client:
         
         # if this is a redirect or a fail, try again
         if msg['type'] in ['redirect', 'fail']:
+            print msg 
             if req.get:
                 if msg['type'] == 'fail': self.sim.failures['get'] += 1
                 self.sim.redirects += 1

@@ -65,6 +65,7 @@ def run_test(filename, description, requests, replicas, mayfail, tolerance, late
 	return pf == 'PASS'
 
 trials = []
+'''
 print 'Basic tests (5 replicas, 30 seconds, 500 requests):'
 trials.append(run_test('simple-1.json', 'No drops, no failures, 80% read',
                        PACKETS_LOW, REPLICAS, MAYFAIL_LOW, 1.2, LATENCY))
@@ -74,6 +75,7 @@ trials.append(run_test('simple-3.json', 'No drops, no failures, 40% read',
                        PACKETS_LOW, REPLICAS, MAYFAIL_LOW, 1.2, LATENCY))
 trials.append(run_test('simple-4.json', 'No drops, no failures, 20% read',
                        PACKETS_LOW, REPLICAS, MAYFAIL_LOW, 1.2, LATENCY))
+'''
 '''
 print 'Unreliable network tests (5 replicas, 30 seconds, 500 requests):'
 trials.append(run_test('unreliable-1.json', '10% drops, no failures, 80% read',

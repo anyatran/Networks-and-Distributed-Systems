@@ -1,13 +1,13 @@
 Project 5: Distributed, Replicated Key-Value Store
 Anh Tran, Yulia Zileeva
 
-Our implementation doesn't passes all the most diffcult cases, but we tried really hard to
+Our implementation doesn't pass all unreliables and hence none adnvanced, but we tried really hard to
 make it work and, most importantly, understand it, and here is our approach
 
 
 High-level approach
 
-	Pretty much we tried to follow Raft paper and guide given in the description of the paper
+	Pretty much we tried to follow Raft paper and the animation on raft website
 
 	We started with implementing reponse to get() and put() requests with "fail" type message.
 
@@ -105,6 +105,10 @@ Challenges we faced
 
 		- figuring out the behavior at each state of the replica 
 		- figuring out the behaviot for append_entry type of request
+                - figuring out the right timers for select.select, election timeout and heartbeats
+                - unreliable network
+                - how to temporarily store client's logs while the leader is not available and then redirect them to it later
+
 
 
 

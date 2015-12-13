@@ -80,7 +80,7 @@ class Replica(object):
         #if not heartbeat:
         if self.next_commit_index <= len(self.logs) - 1:
             entries = self.logs[self.next_index[dst]:]
-        if len(entries) > 100:
+        if len(entries) > 30:
             entries = []
         msg = {
             'src': self.my_id,
@@ -327,8 +327,8 @@ class Replica(object):
                     self.switch_to_follower(msg)
                 self.msg_id = msg["msg_id"]
                 self.term = msg["term"]
-                print "%s: prev log - %i, last_log - %s" %(self.my_id, msg["prev_log_index"], json.dumps(self.logs[len(self.logs) - 1]))
-                if msg["commit_index"] == -1:# and len(self.logs) == 0: #no logs before that
+                #print "%s: prev log - %i, last_log - %s" %(self.my_id, msg["prev_log_index"], json.dumps(self.logs[len(self.logs) - 1]))
+                if msg["commit_index"] == -1 and msg["prev_log_index"] == -1:# and len(self.logs) == 0: #no logs before that
                     #print "[%s]:no logs needed to be committed" %self.my_id
                     self.add_entries(msg["entries"])
                     self.send_to(self.reply_to_ae_msg("success", len(self.logs)))

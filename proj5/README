@@ -1,0 +1,119 @@
+Project 5: Distributed, Replicated Key-Value Store
+Anh Tran, Yulia Zileeva
+
+Our implementation doesn't pass all unreliables and hence none adnvanced, but we tried really hard to
+make it work and, most importantly, understand it, and here is our approach
+
+
+High-level approach
+
+	Pretty much we tried to follow Raft paper and the animation on raft website
+
+	We started with implementing reponse to get() and put() requests with "fail" type message.
+
+	Then, we added leader election. We added voters array to keep track of who voted, voted_for
+	to keep track of who this replica voted for. We also added election timeout to check if replica
+	is still a follower and did not get update in the timeout. Additionaly, we added new "redirect" 
+	type of message to redirect client's request to the leader
+
+	Then, we added new 'append_entry' message to let other replicas know that leader is alive and to
+	pass necessary information to append to log or commit entries.
+
+	Later, we implemented log and datastore to keep track of key,value pairs for the client
+
+
+
+	We represented our replica as a Class that has many fields:
+
+		For our replica we had three states
+			"f" follower
+			"c" candidate
+			"l" leader
+
+		datastore 		- An object to keep track of data - {key: value}
+		logs 			- An array to keep track of logs - 
+						log = {
+				            'src': msg["src"], 
+				            'index': len(self.logs),
+				            'committed': "false", 
+				            'MID': msg["MID"], 
+				            'log_term': self.term, 
+				            'type': msg["type"], 
+				            'key': msg["key"]
+				            }
+		We also are keeping track of things like term, voters, and other necessary things (check Replica class)
+
+
+
+	We also had different types of messages:
+        'req_vote' - to request a vote
+		'vote_result' - to send a vote
+		'heartbeat' - to send a heartbeat
+		'append_entry' - to send an append entry 
+		'fail' or 'success' - to reply to append entry
+		'get' or 'client' - to reply to client
+		'redirect' - to redirect request to the leader
+
+
+	Per each type of message we created a handle_<msg_type> function to process it.
+
+		Main functions:
+
+
+		handle_req_vote - to handle request to vote type of message
+				if replica's term is greater then received message's term, we would vote no
+
+				otherwise, first, we would update our last_response_received time, then, 
+				if replica is not a follower we would switch to follower, and if it is, we 
+				would vote yes for that candidate if it was up to date
+
+
+    	handle_vote_result - to hanlde received vote
+    			ignore if replica is not a candidate
+
+    			otherwise, 
+    			ignore if my term > message's term
+    			switch to follower if my term < message's term
+    			and if vote is yes, update voters and check for quorum
+
+    	handle_heartbeat
+    			ignore if my term > message's term
+
+    			otherwise,
+    			update last_response_received time
+    			switch to follower if replica's state is candidate or leader; if it is follower,
+    			update leader and commit messages if needed
+
+    	handle_append_entry
+    			ignore if my term > message's term
+
+    			otherwise, switch to follower if not
+
+    			if replica's last log is smaller than leader's or if terms for that log are not equal, 
+    			send failed reply to append entry message. otherwise, send success, add entries, and 
+    			commit if necessary
+
+    	handle_ae_result
+    			to handle "success" and "fail" messages appropriately
+
+    	handle_redirect 
+    			to handle redirect message
+
+
+
+Challenges we faced
+
+		- figuring out the behavior at each state of the replica 
+		- figuring out the behaviot for append_entry type of request
+                - figuring out the right timers for select.select, election timeout and heartbeats
+                - unreliable network
+                - how to temporarily store client's logs while the leader is not available and then redirect them to it later
+
+
+
+
+
+How we tested our code
+
+	We used test scripts to run our code, and print messages to debug it
+

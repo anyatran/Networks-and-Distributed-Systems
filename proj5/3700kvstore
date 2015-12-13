@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 
-import sys, socket, select, time, json, random
+import sys, socket, math, random, select, time, json, random
 
 # Your ID number
 my_id = sys.argv[1]
 
 # The ID numbers of all the other replicas
 replica_ids = sys.argv[2:]
-
-# Connect to the network. All messages to/from other replicas and clients will
+total_servers = 1 + len(replica_ids)
+quorum = math.ceil(total_servers / 2.0)
 # occur over this socket
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 sock.connect(my_id)
@@ -17,52 +17,391 @@ datastore = {}
 
 class Replica(object):
     def __init__(self):
-        self.r_id = sys.argv[1] 
+        self.my_id = sys.argv[1]
+        self.ae_timer = 0
         self.state = "f" # follower, candidate, leader
-        self.folowers = [] # for leaders only
-        self.logs = [] # logs: {term, indexNumber, key, val}
+        self.neighbors = set(sys.argv[2:]) # for leaders its a list of followers
+        self.logs = [] #{} # {index_number: {term: 1, key: 123, val: "asdf", action: get/put}}
+        self.last_commit_index = -1
+        self.last_commit_term = -1
+        self.next_commit_index = 0
         self.term = 0
+        self.leader = "FFFF" 
+        self.datastore = {}
+        self.voted_for = -1
+        self.election_timeout = random.uniform(0.15, 0.3)
+        self.last_response_received = 0 # only from leaders or candidates
+        #for candidate
+        self.voters = []
+        self.buffer = []
+        # for leaders
+        self.last_ae_sent = time.time()
+        self.replicated_followers = []
+        self.next_index = {} 
+        self.match_index = {} 
+        self.appended = True 
+        self.msg_id = 0
+
+    def send_to(self, msg):
+        sock.send(json.dumps(msg) + "\n")
+
+    def request_vote_msg(self, dst):
+        msg = {
+            'src': self.my_id,
+            'dst': dst,
+            'leader': self.leader,
+            'type': 'req_vote',
+            'term': self.term,
+            'last_log': self.get_last_log()
+        }
+        return msg
+
+    def vote_result(self, dst, voted):
+        msg = {
+            'src': self.my_id,
+            'dst': dst,
+            'leader': self.leader,
+            'type': 'vote_result',
+            'term': self.term,
+            'vote': voted
+        }
+        return msg
     
-    def elect_leader(self, candidate):
-        return 0
+    # heartbeat is a boolean. True if sending a heartbeat
+    def append_entry_msg(self, dst, heartbeat):
+        prev_index = self.match_index[dst]
+        prev_term = self.term
+        try:
+            prev_term = self.logs[prev_index]["log_term"]
+        except:
+            prev_term = self.term
+        entries = []
+        #if not heartbeat:
+        if self.next_commit_index <= len(self.logs) - 1:
+            entries = self.logs[self.next_index[dst]:]
+        if len(entries) > 20:
+            entries = []
+        msg = {
+            'src': self.my_id,
+            'dst': dst,
+            'type': "append_entry",
+            'leader': self.leader,
+            'term': self.term,
+            'entries': entries,
+            'commit_index': self.last_commit_index,
+            'prev_log_index': prev_index,
+            'prev_log_term': prev_term,
+            'msg_id': self.msg_id
+        }
+        return msg
 
-    def put(self, data):
-        return 0
+    def reply_to_ae_msg(self, status, next_index):
+
+        msg = {
+            'src': self.my_id,
+            'dst': self.leader,
+            'term': self.term,
+            'type': status,
+            'leader': self.leader,
+            'next_index': next_index,
+            'msg_id': self.msg_id
+        }
+        return msg
+
+    def reply_to_client_msg(self, result, status):
+        msg = {
+            'src': self.my_id,
+            'dst': result["client_id"],
+            'leader': self.leader,
+            'MID': result["MID"],
+            'type': status
+        }
+        if result["type"] == "get" and status == "ok":
+            msg["value"] = result["value"]
+        return msg
+
+    def redirect_msg(self, received):
+        msg = {
+            'src': self.my_id,
+            'dst': received['src'],
+            'type': 'redirect',
+            'MID': received['MID'],
+            'leader': self.leader
+        }
+        return msg
+
+    def get_last_log(self):
+        last_log = {}
+        last_log["log_term"] = -1
+        last_log["log_index"] = len(self.logs) - 1
+        #if there are no logs then return {log_index: -1, term: -1}
+        if len(self.logs) > 0:
+            last_log["log_term"] = self.logs[len(self.logs) - 1]["log_term"]
+        return last_log
+
+    #================for candidates ================
+    def request_vote(self):
+        self.term += 1
+        self.state = "c"
+        self.voters = []
+        self.voters.append(self.my_id)
+        last_log = self.get_last_log()
+        self.last_response_received = time.time()
+        for replica_id in self.neighbors:
+            self.send_to(self.request_vote_msg(replica_id))
+
+    def candidate_up_to_date(self, msg):
+        my_last_log = self.get_last_log()
+        my_last_log_term = my_last_log["log_term"]
+        if my_last_log_term < msg["last_log"]["log_term"]: # term of last log entry
+            return True
+        elif my_last_log_term > msg["last_log"]["log_term"]:
+            return False
+        else:
+            return my_last_log["log_index"] <= msg["last_log"]["log_index"]
+    def switch_to_follower(self, request):
+        self.state = "f"
+        #self.leader = request["leader"]
+        self.term = max(self.term, request["term"])
+        self.voted_for = -1
+        self.voters = []
+        self.match_index = {}
+        self.next_index = {}
+        self.replicated_followers = []
+        #self.buffer = []
+        self.last_response_received = time.time()
+
+    def switch_to_leader(self, request):
+        if self.state == "c":
+            self.state = "l"
+            self.leader = self.my_id
+            self.voters = []
+            self.voted_for = -1
+            self.init_match_index()
+            self.init_next_index()
+            for request in self.buffer:
+                self.process_log(request)
+            self.buffer = []
+            self.msg_id = 0
+            self.replicated_followers.append(self.my_id)
     
-    def get(self, key):
-        return 0
+    
+    def elect_candidate(self, request):
+        if self.term < request["term"]:
+            if self.state != "f":
+                self.switch_to_follower(request)
+            self.term = max(self.term, request["term"])
+            if self.voted_for == -1 and self.candidate_up_to_date(request):
+                self.voted_for = request["src"]
+                self.term = max(self.term, request["term"])
+                self.send_to(self.vote_result(request["src"], "yes"))
+                self.last_response_received = time.time()
+    
 
+    def init_next_index(self):
+        self.next_index = {}
+        leader_next_index = len(self.logs)
+        for replica_id in self.neighbors:
+            self.next_index[replica_id] = leader_next_index
+    
+    def init_match_index(self):
+        for replica_id in self.neighbors:
+            self.match_index[replica_id] = len(self.logs) - 1 
 
+    def send_heartbeat(self):
+        self.appended = False
+        for replica_id in self.neighbors:
+            self.send_to(self.append_entry_msg(replica_id, True))
 
-def main():
-    last = 0
-    while True:
-        ready = select.select([sock], [], [], 0.1)[0]
-        replica = Replica()
-        if sock in ready:
-            raw = sock.recv(32768)
-            
-            # we may receive multiple messages during a single recv(); \n denotes the break between messages
-            for msg_raw in raw.split('\n'):
-                print msg_raw
-                if len(msg_raw) == 0: continue
-                msg = json.loads(msg_raw)
-        
-                # For now, respond to all client messages with a type=fail response
-                if msg['type'] in ['get', 'put']:
-                    sock.send(json.dumps({'src': my_id, 'dst': msg['src'], 'leader': 'FFFF',
-                                              'type': 'fail', 'MID': msg['MID']}) + '\n')
-                    print "MY ID: %s" % my_id        
-                # Handle noop messages. This may be removed from your final implementation
-                elif msg['type'] == 'noop':
-                    print '%s received a NOOP from %s' % (msg['dst'], msg['src'])
-                
-        clock = time.time()
-        if clock-last > 2:
-            # Send a no-op message to a random peer every two seconds, just for fun
-            # You definitely want to remove this from your implementation
-            msg = {'src': my_id, 'dst': random.choice(replica_ids), 'leader': 'FFFF', 'type': 'noop'}
-            sock.send(json.dumps(msg) + '\n')
-            print '%s sending a NOOP to %s' % (msg['src'], msg['dst'])
-            last = clock
-main()
+    def process_log(self, msg):
+        log_term = self.term
+        # try to get right away in leader's database 
+        # and do not replicate it
+        if msg["type"] == "get":
+            try:
+                value = self.datastore[msg["key"]]
+                result = {"client_id": msg["src"], "MID": msg["MID"],"type": "get", "value": value}
+                self.send_to(self.reply_to_client_msg(result, "ok"))
+            except:
+                # couldnt' get the value
+                result = {"client_id": msg["src"], "MID": msg["MID"],"type": "get"}
+                self.send_to(self.reply_to_client_msg(result, "fail"))
+        elif msg["type"] == "put":
+            log = {
+                'src': msg["src"], 
+                'index': len(self.logs),
+                'MID': msg["MID"], 
+                'log_term': self.term, 
+                'type': msg["type"], 
+                'key': msg["key"],
+                'value': msg['value']
+                }
+            self.logs.append(log)
+            if self.appended: #finished the prev append session#if self.next_commit_index == log["index"]:
+                self.replicate()
+                self.appended = False
+
+    def replicate(self):
+        self.last_ae_sent = time.time()
+        for replica_id in self.neighbors:
+            self.send_to(self.append_entry_msg(replica_id, False))
+
+    #============== handling messages ===================
+    def handle_log(self, msg):
+        if msg['type'] in ['get', 'put']:
+            if self.state == "f": #im a follower - redirect to leader
+                #self.send_to(self.redirect_msg(msg))
+                self.buffer.append(msg)
+            elif self.state == "c":
+                self.buffer.append(msg)
+            elif self.state == "l":
+                #self.ae_timer = time.time()
+                self.process_log(msg)
+
+    def commit(self, log_index):
+        log = self.logs[log_index]
+        #{"src": "001C", "MID": "8", "value": "2b", "key": "EA", "log_term": 1, "type": "put"}
+        self.appended = True
+        if self.next_commit_index == log_index:
+            if log["type"] == "put":
+                self.datastore[log["key"]] = log["value"]
+                self.last_commit_index = log_index
+                self.next_commit_index += 1
+                return {"client_id": log["src"], "MID": log["MID"], "type": "put", "log_index": log_index}
+            elif log["type"] == "get":
+                value = self.datastore[log["key"]]
+                self.last_commit_index = log_index
+                self.next_commit_index += 1
+                return {"client_id": log["src"], "MID": log["MID"],"type": "get", "value": value, "log_index": log_index}
+
+    def add_entries(self, entries):
+        self.logs = self.logs + entries
+
+    def handle_append_entry(self, msg):
+        if self.term > msg["term"]:
+            self.send_to(self.reply_to_ae_msg("fail", len(self.logs)))
+        elif self.term <= msg["term"]:
+            if len(msg["entries"]) == 0:
+                self.handle_heartbeat(msg)
+            else:
+                self.last_response_received = time.time()
+                if self.state == "l" or self.state == "c":
+                    self.switch_to_follower(msg)
+                self.msg_id = msg["msg_id"]
+                self.term = msg["term"]
+                if msg["commit_index"] == -1 or msg["prev_log_index"] == -1:# and len(self.logs) == 0: #no logs before that
+                    self.add_entries(msg["entries"])
+                    self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
+                elif len(self.logs) - 1 < msg["prev_log_index"]: #if my last log is smaller than leader's
+                    self.send_to(self.reply_to_ae_msg("fail", len(self.logs))) #next index expecting 
+                elif self.logs[msg["prev_log_index"]]["log_term"] == msg["prev_log_term"]:
+                    self.logs = self.logs[:msg["prev_log_index"] + 1]
+                    self.add_entries(msg["entries"])
+                    if min(msg["commit_index"], len(self.logs) - 1) >= self.next_commit_index:
+                        for log_indx in range(self.next_commit_index, min(msg["commit_index"] + 1, len(self.logs))):# msg["commit_index"] + 1):
+                            self.commit(log_indx)
+                    self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
+                else:
+                    self.logs = self.logs[:msg["prev_log_index"]]
+                    self.send_to(self.reply_to_ae_msg("fail", len(self.logs)))
+    
+    def handle_vote_result(self, result):
+        if self.state == "c":
+            if self.term < result["term"]:
+                self.switch_to_follower(result)
+            elif self.term == result["term"]:
+                if result["vote"] == "yes":
+                    self.voters.append(result["src"])
+                    if len(self.voters) >= quorum: #reched the quorum
+                        self.switch_to_leader(result)
+   
+    def handle_heartbeat(self, msg):
+        self.msg_id = msg["msg_id"]
+        if self.term > msg["term"]:
+            self.send_to(self.reply_to_ae_msg("fail", len(self.logs)))
+        elif self.term <= msg["term"]:
+            #self.msg_id = msg["msg_id"]
+            self.last_response_received = time.time()
+            if self.state == "c" or self.state == "l":
+                self.switch_to_follower(msg)
+                self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
+            else: #I'm a follower
+                if self.leader != msg["leader"]: #new leader is elected
+                    self.leader = msg["leader"]
+                    for client_request in self.buffer:
+                        client_request["leader"] = self.leader
+                        client_request["dst"] = self.leader
+                        self.send_to(client_request)
+                    self.buffer = []
+                if msg["commit_index"] != -1 and msg["commit_index"] >= self.next_commit_index:
+                    
+                    for log_indx in range(self.next_commit_index, min(msg["commit_index"] + 1, len(self.logs))):
+                        result = self.commit(log_indx)
+                self.voted_for = -1
+                self.term = max(self.term, msg["term"])
+                self.send_to(self.reply_to_ae_msg("success", len(self.logs)))
+    
+    def handle_ae_result(self, msg):
+        if self.term < msg["term"]:
+            self.switch_to_follower(msg)
+        else:
+            if msg["type"] == "success":
+                self.match_index[msg["src"]] = msg["next_index"] - 1
+                self.next_index[msg["src"]] = msg["next_index"]
+                if self.msg_id == msg["msg_id"]:
+                    self.replicated_followers.append(msg["src"])
+                    
+                    if len(self.replicated_followers) >= quorum: 
+                        if self.match_index[msg["src"]] >= self.next_commit_index and len(self.logs) - 1 >= self.next_commit_index: #has stuff to commit
+                            min_commit_index = min(self.last_commit_index, min(len(self.logs) - 1, self.match_index[msg["src"]])) + 1
+                            max_commit_index = max(self.last_commit_index, min(len(self.logs) - 1, self.match_index[msg["src"]])) + 1
+                            for log_indx in range(min_commit_index, max_commit_index):
+                                result = self.commit(log_indx)
+                                self.send_to(self.reply_to_client_msg(result, "ok"))
+                        self.replicated_followers = []
+                        self.replicated_followers.append(self.my_id)
+                        self.msg_id += 1
+            elif msg["type"] == "fail":
+                self.next_index[msg["src"]] = msg["next_index"]
+
+    def main(self):
+        self.last_response_received = time.time()
+        last_heartbeat_sent = time.time()
+        while True:
+            current = time.time()
+            if (current - self.last_response_received) > self.election_timeout and self.state != "l": #timeout
+                self.request_vote()
+
+            ready = select.select([sock], [], [], 0.0021)[0]
+            if sock in ready:
+                raw = sock.recv(32768)
+                for msg_raw in raw.split('\n'):
+                    if len(msg_raw) == 0: continue
+                    try:
+                        msg = json.loads(msg_raw)
+                                    
+                        if msg['type'] in ['get', 'put']:
+                            self.handle_log(msg)
+                        elif msg["type"] in ["fail", "success"]:
+                            self.handle_ae_result(msg)
+                        elif msg["type"] == "heartbeat":
+                            self.handle_heartbeat(msg)
+                        elif msg["type"] == "append_entry":
+                            self.handle_append_entry(msg)
+                        elif msg["type"] == "redirect":
+                            self.handle_redirect(msg)
+                        elif msg["type"] == "vote_result":
+                            self.handle_vote_result(msg)
+                        elif msg["type"] == "req_vote":
+                            self.elect_candidate(msg)
+                    except ValueError:
+                        print "[INCOMPLETE MSG]"
+
+            if self.state == "l":
+                clock = time.time()
+                if clock - self.last_ae_sent > 0.05: #send heartbeats every 50ms
+                    self.send_heartbeat()
+                    self.last_ae_sent = time.time()
+
+r = Replica()
+r.main()
